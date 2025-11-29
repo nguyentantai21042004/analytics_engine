@@ -13,6 +13,19 @@ help:
 	@echo ""
 	@echo "🚀 RUN SERVICES:"
 	@echo "  make run-api                 - Run API service locally"
+	@echo "  make run-analytics-api       - Run Analytics Engine API (Phase 0)"
+	@echo "  make run-analytics-consumer  - Run Analytics Engine consumer (Phase 0)"
+	@echo ""
+	@echo "🗄️  DATABASE (Phase 0):"
+	@echo "  make db-init                 - Initialize Alembic"
+	@echo "  make db-migrate              - Create new migration"
+	@echo "  make db-upgrade              - Apply migrations"
+	@echo "  make db-downgrade            - Rollback last migration"
+	@echo ""
+	@echo "🐳 DOCKER (Phase 0):"
+	@echo "  make dev-up                  - Start development environment"
+	@echo "  make dev-down                - Stop development environment"
+	@echo "  make dev-logs                - View development logs"
 	@echo ""
 	@echo "📥 WHISPER ARTIFACTS (Dynamic Model Loading):"
 	@echo "  make setup-artifacts         - Download Whisper library artifacts (default: small)"
@@ -37,6 +50,7 @@ help:
 	@echo "✨ CODE QUALITY:"
 	@echo "  make format                  - Format code (black)"
 	@echo "  make lint                    - Lint code (flake8)"
+
 
 # ==============================================================================
 # DEPENDENCY MANAGEMENT (UV)
@@ -68,6 +82,13 @@ run-api:
 
 run-api-refactored:
 	PYTHONPATH=. uv run cmd/api/main.py
+
+# Phase 0: Analytics Engine
+run-analytics-api:
+	PYTHONPATH=. uv run cmd/api/main.py
+
+run-analytics-consumer:
+	PYTHONPATH=. uv run cmd/consumer/main.py
 
 # ==============================================================================
 # WHISPER SETUP
@@ -151,6 +172,39 @@ docker-restart:
 
 docker-clean:
 	docker-compose down -v
+
+# Phase 0: Development Environment
+dev-up:
+	docker-compose -f docker-compose.dev.yml up -d
+
+dev-down:
+	docker-compose -f docker-compose.dev.yml down
+
+dev-logs:
+	docker-compose -f docker-compose.dev.yml logs -f
+
+dev-clean:
+	docker-compose -f docker-compose.dev.yml down -v
+
+# ==============================================================================
+# DATABASE OPERATIONS (Phase 0)
+# ==============================================================================
+db-init:
+	PYTHONPATH=. uv run alembic init migrations
+
+db-migrate:
+	@read -p "Enter migration message: " msg; \
+	PYTHONPATH=. uv run alembic revision --autogenerate -m "$$msg"
+
+db-upgrade:
+	PYTHONPATH=. uv run alembic upgrade head
+
+db-downgrade:
+	PYTHONPATH=. uv run alembic downgrade -1
+
+db-reset:
+	PYTHONPATH=. uv run alembic downgrade base
+	PYTHONPATH=. uv run alembic upgrade head
 
 # ==============================================================================
 # CODE QUALITY & TESTING

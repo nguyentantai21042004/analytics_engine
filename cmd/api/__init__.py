@@ -1,4 +1,1 @@
-"""
-API Service entry point.
-"""
-
+"""Analytics API package."""

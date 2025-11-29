@@ -63,3 +63,10 @@ Thumbs.db
 *~
 *.swo
 *.swp
+
+# --- OpenSpec ---
+# AGENTS.md
+# CLAUDE.md
+# .agent/
+# .claude/
+# .cursor/
