@@ -81,7 +81,7 @@ except Exception as e:
     raise
 
 
-# Run with: uv run cmd/api/main.py
+# Run with: uv run commands/api/main.py
 if __name__ == "__main__":
     import uvicorn
     import sys
