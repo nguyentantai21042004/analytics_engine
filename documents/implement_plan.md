@@ -6,15 +6,15 @@
 
 ---
 
-## PHASE 0: PREPARATION ✅ COMPLETED
+## PHASE 0: PREPARATION COMPLETED
 **Duration**: 3-5 days  
 **Team**: Tech Lead + DevOps  
 **Goal**: Setup môi trường phát triển & infrastructure foundation  
-**Status**: ✅ **COMPLETED** (November 29, 2025)
+**Status**: COMPLETED (November 29, 2025)
 
 ### Tasks
 
-#### 0.1 Project Setup ✅
+#### 0.1 Project Setup
 - [x] **Git Repository** - Completed with clean architecture structure
   ```bash
   analytics-service/
@@ -99,7 +99,7 @@
   python -m spacy download vi_core_news_lg
   ```
 
-#### 0.2 Database Migration Setup ✅
+#### 0.2 Database Migration Setup
 - [x] **Alembic Configuration**
   ```bash
   uv add alembic
@@ -111,13 +111,13 @@
   - Added indexes for performance
   - Applied migration successfully
 
-### Deliverables (Phase 0) ✅
-- ✅ **Git repository** with layered architecture structure
-- ✅ **Docker Compose dev environment** running (Postgres, Redis, MinIO)
-- ✅ **Database migration scripts** with Alembic
-- ✅ **Project structure** following `commands/`, `internal/`, `core/`, `infrastructure/`, `services/`
+### Deliverables (Phase 0)
+- **Git repository** with layered architecture structure
+- **Docker Compose dev environment** running (Postgres, Redis, MinIO)
+- **Database migration scripts** with Alembic
+- **Project structure** following `commands/`, `internal/`, `core/`, `infrastructure/`, `services/`
 
-### Success Criteria ✅
+### Success Criteria
 - [x] `docker-compose up` running successfully
 - [x] Database migrations applied
 - [x] API and Consumer entry points working
@@ -125,15 +125,15 @@
 
 ---
 
-## PHASE 0.5: AI MODEL INTEGRATION ✅ COMPLETED
+## PHASE 0.5: AI MODEL INTEGRATION COMPLETED
 **Duration**: 2-3 days  
 **Team**: ML Engineer + Backend Engineer  
 **Goal**: Integrate and test PhoBERT (ONNX) model thoroughly  
-**Status**: ✅ **COMPLETED** (November 29, 2025)
+**Status**: COMPLETED (November 29, 2025)
 
 ### Tasks
 
-#### 0.5.1 PhoBERT ONNX Setup ✅
+#### 0.5.1 PhoBERT ONNX Setup
 - [x] **Model Acquisition**
   - Downloaded pre-trained PhoBERT ONNX model (quantized for CPU)
   - Model stored in MinIO for artifact management
@@ -155,7 +155,7 @@
   - Centralized all configuration values
   - Easy to modify and maintain
 
-#### 0.5.2 Comprehensive Testing ✅
+#### 0.5.2 Comprehensive Testing
 - [x] **Unit Tests** (`tests/phobert/test_unit.py`)
   - 21 tests covering:
     - Text segmentation (3 tests)
@@ -164,7 +164,7 @@
     - Prediction logic (4 tests)
     - Batch processing (2 tests)
     - Edge cases (3 tests)
-  - ✅ 21/21 passing (100%)
+  - 21/21 passing (100%)
 
 - [x] **Integration Tests** (`tests/phobert/test_integration.py`)
   - 9 tests with real model:
@@ -175,19 +175,19 @@
     - Special characters & emojis
     - Probability distribution
     - Prediction consistency
-  - ✅ 9/9 passing (100%)
+  - 9/9 passing (100%)
 
 - [x] **Performance Tests** (`tests/phobert/test_performance.py`)
   - 6 benchmark tests:
-    - Single inference speed (<100ms) ✅
-    - Batch throughput ✅
-    - Model loading time ✅
+    - Single inference speed (<100ms)
+    - Batch throughput
+    - Model loading time
     - Memory usage (skipped - requires psutil)
-    - Throughput benchmarks ✅
-    - Cold start vs warm ✅
-  - ✅ 5/6 passing (1 skipped)
+    - Throughput benchmarks
+    - Cold start vs warm
+  - 5/6 passing (1 skipped)
 
-#### 0.5.3 Documentation ✅
+#### 0.5.3 Documentation
 - [x] **Model Report** (`documents/phobert_report.md`)
   - Test coverage summary
   - Performance benchmarks
@@ -204,32 +204,32 @@
   - Archived as `2025-11-29-phobert_integration`
   - Created `openspec/specs/ai_integration/spec.md`
 
-### Deliverables (Phase 0.5) ✅
-- ✅ **PhoBERT ONNX model** downloaded and configured
-- ✅ **Model wrapper** in `infrastructure/ai/phobert_onnx.py`
-- ✅ **Constants file** in `infrastructure/ai/constants.py`
-- ✅ **Comprehensive test suite** (35 tests total)
+### Deliverables (Phase 0.5)
+- **PhoBERT ONNX model** downloaded and configured
+- **Model wrapper** in `infrastructure/ai/phobert_onnx.py`
+- **Constants file** in `infrastructure/ai/constants.py`
+- **Comprehensive test suite** (35 tests total)
   - 21 unit tests
   - 9 integration tests
   - 5 performance tests
-- ✅ **Model report** with benchmarks
-- ✅ **Documentation** updated (README, project.md)
+- **Model report** with benchmarks
+- **Documentation** updated (README, project.md)
 
-### Success Criteria ✅
-- [x] PhoBERT inference <100ms per text ✅ (~50-80ms achieved)
-- [x] All unit tests passing (coverage >90%) ✅ (100% coverage)
-- [x] Integration tests passing ✅ (9/9)
-- [x] Model correctly predicts Vietnamese sentiment ✅
-- [x] Performance benchmarks documented ✅
-- [x] OpenSpec change archived ✅
+### Success Criteria
+- [x] PhoBERT inference <100ms per text (~50-80ms achieved)
+- [x] All unit tests passing (coverage >90%) (100% coverage)
+- [x] Integration tests passing (9/9)
+- [x] Model correctly predicts Vietnamese sentiment
+- [x] Performance benchmarks documented
+- [x] OpenSpec change archived
 
 ### Performance Results
 ```
-Single Prediction:     ~50-80ms (Target: <100ms) ✅
-Batch (30 texts):      ~150ms avg (Target: <200ms) ✅
-Model Loading:         ~2-3s (Target: <5s) ✅
-Memory Usage:          ~200-300MB ✅
-Throughput:            ~10-15 pred/s (Target: ≥5) ✅
+Single Prediction:     ~50-80ms (Target: <100ms)
+Batch (30 texts):      ~150ms avg (Target: <200ms)
+Model Loading:         ~2-3s (Target: <5s)
+Memory Usage:          ~200-300MB
+Throughput:            ~10-15 pred/s (Target: ≥5)
 ```
 
 ### Test Commands
@@ -239,146 +239,146 @@ make test-phobert-unit         # Unit only (21 tests)
 make test-phobert-integration  # Integration (9 tests)
 make test-phobert-performance  # Performance (5 tests)
 ```
+---
 
+## PHASE 0.6: SPACY-YAKE KEYWORD EXTRACTION COMPLETED
+**Duration**: 2-3 days  
+**Team**: ML Engineer + Backend Engineer  
+**Goal**: Integrate SpaCy + YAKE for keyword extraction with aspect mapping  
+**Status**: COMPLETED (November 29, 2025)
 
-#### 0.5.2 YAKE Integration
-- [ ] **Install and Test YAKE**
-  ```bash
-  uv add yake
-  ```
+### Tasks
 
-- [ ] **Create YAKE Wrapper**
-  ```python
-  # infrastructure/ai/yake_extractor.py
-  import yake
-  from typing import List, Dict
-  
-  class YAKEExtractor:
-      def __init__(self):
-          self.extractor = yake.KeywordExtractor(
-              lan="vi",
-              n=2,  # bigrams
-              dedupLim=0.7,
-              top=10,
-              features=None
-          )
-      
-      def extract(self, text: str) -> List[Dict]:
-          keywords = self.extractor.extract_keywords(text)
-          
-          results = []
-          for keyword, score in keywords:
-              # YAKE score: lower is better, convert to weight
-              weight = max(0, 1 - score)
-              
-              if weight > 0.3:  # Filter low-quality keywords
-                  results.append({
-                      "keyword": keyword,
-                      "weight": weight,
-                      "score": score,
-                      "method": "YAKE"
-                  })
-          
-          return results
-  ```
+#### 0.6.1 SpaCy-YAKE Setup
+- [x] **Code Refactoring**
+  - Refactored existing SpaCy-YAKE code to match PhoBERT pattern
+  - Created `infrastructure/ai/spacyyake_extractor.py` (362 lines)
+  - Created `infrastructure/ai/aspect_mapper.py` (344 lines)
+  - Extracted constants to `infrastructure/ai/constants.py`
 
-- [ ] **Unit Tests for YAKE**
-  ```python
-  # tests/unit/test_yake_extractor.py
-  import pytest
-  from infrastructure.ai.yake_extractor import YAKEExtractor
-  
-  @pytest.fixture
-  def extractor():
-      return YAKEExtractor()
-  
-  def test_extract_keywords(extractor):
-      text = "Xe VinFast VF8 có thiết kế đẹp, pin trâu nhưng giá hơi cao"
-      
-      keywords = extractor.extract(text)
-      
-      assert len(keywords) > 0
-      assert all("keyword" in kw for kw in keywords)
-      assert all("weight" in kw for kw in keywords)
-      assert all(kw["weight"] > 0.3 for kw in keywords)
-  
-  def test_vietnamese_text(extractor):
-      text = "Chất lượng sản phẩm tốt, dịch vụ bảo hành chu đáo"
-      
-      keywords = extractor.extract(text)
-      
-      # Should extract Vietnamese keywords
-      keyword_texts = [kw["keyword"] for kw in keywords]
-      assert any("chất lượng" in kw.lower() for kw in keyword_texts)
-  
-  def test_performance(extractor):
-      text = "Xe VinFast VF8 có thiết kế đẹp" * 10
-      
-      import time
-      start = time.time()
-      keywords = extractor.extract(text)
-      duration = (time.time() - start) * 1000
-      
-      assert duration < 500  # Must be < 500ms
-      assert len(keywords) > 0
-  ```
+- [x] **Model Wrapper Features**
+  - SpaCy NLP integration (Named Entity Recognition)
+  - YAKE statistical keyword extraction
+  - Noun chunk extraction
+  - Multi-source keyword combination with scoring
+  - Confidence calculation
+  - Batch processing support
+  - Full error handling
 
-#### 0.5.3 Integration Tests
-- [ ] **Combined Model Test**
-  ```python
-  # tests/integration/test_ai_models.py
-  import pytest
-  from infrastructure.ai.phobert_onnx import PhoBERTONNX
-  from infrastructure.ai.yake_extractor import YAKEExtractor
-  
-  @pytest.fixture
-  def phobert():
-      return PhoBERTONNX("models/phobert_sentiment_cpu.onnx")
-  
-  @pytest.fixture
-  def yake():
-      return YAKEExtractor()
-  
-  def test_full_pipeline(phobert, yake):
-      text = "Xe VinFast VF8 có thiết kế đẹp, pin trâu nhưng giá hơi cao"
-      
-      # Extract keywords
-      keywords = yake.extract(text)
-      assert len(keywords) > 0
-      
-      # Analyze sentiment
-      sentiment = phobert.predict(text)
-      assert sentiment["sentiment"] in ["POSITIVE", "NEUTRAL", "NEGATIVE"]
-      
-      # Combined result
-      result = {
-          "text": text,
-          "keywords": keywords,
-          "sentiment": sentiment
-          }
-      
-      assert "keywords" in result
-      assert "sentiment" in result
-  
-  def test_performance_benchmark(phobert, yake):
-      texts = [
-          "Xe đẹp, pin tốt",
-          "Giá cao, chất lượng kém",
-          "Bình thường, không có gì đặc biệt"
-      ] * 10  # 30 texts
-      
-      import time
-      start = time.time()
-      
-      for text in texts:
-          keywords = yake.extract(text)
-          sentiment = phobert.predict(text)
-      
-      duration = time.time() - start
-      avg_time = (duration / len(texts)) * 1000
-      
-      assert avg_time < 200  # Average < 200ms per text
-  ```
+#### 0.6.2 Aspect Mapping
+- [x] **AspectMapper Implementation**
+  - YAML dictionary loading
+  - Keyword-to-aspect mapping (case-insensitive)
+  - Statistics tracking
+  - Comprehensive validation logic
+  - Configurable unknown label
+
+#### 0.6.3 Configuration Management
+- [x] **Environment Variables**
+  - Added to `core/config.py`:
+    - `spacy_model`, `yake_language`, `yake_n`
+    - `max_keywords`, `entity_weight`, `chunk_weight`
+    - `aspect_dictionary_path`, `unknown_aspect_label`
+  - Updated `.env.example` with all SpaCy-YAKE settings
+  - All constants externalized (no hard-coded values)
+
+#### 0.6.4 Comprehensive Testing
+- [x] **Unit Tests** (34 tests)
+  - Initialization, text validation
+  - Entity extraction, noun chunk extraction
+  - Keyword combination, confidence calculation
+  - Extraction logic, edge cases
+
+- [x] **Aspect Mapper Tests** (24 tests)
+  - Initialization, dictionary loading
+  - Keyword mapping (exact match, case-insensitive)
+  - Dictionary validation
+  - Statistics
+
+- [x] **Integration Tests** (14 tests)
+  - Real SpaCy and YAKE models
+  - English text extraction (basic, technical)
+  - Named entity handling
+  - Batch processing
+  - Aspect mapping integration
+
+- [x] **Performance Tests** (6 tests)
+  - Single extraction speed
+  - Batch throughput
+  - Model loading time
+  - Throughput benchmarks
+  - Cold start vs warm
+
+#### 0.6.5 Makefile Commands
+- [x] **Added Commands**
+  - `make download-spacy-model` - Download SpaCy model
+  - `make test-spacyyake` - Run all tests
+  - `make test-spacyyake-unit` - Unit tests only
+  - `make test-spacyyake-integration` - Integration tests
+  - `make test-spacyyake-performance` - Performance tests
+
+#### 0.6.6 Documentation
+- [x] **Model Report**
+  - Created `documents/spacyyake_report.md`
+  - Test coverage summary (78 tests)
+  - Performance benchmarks
+  - Configuration options
+  - Usage examples
+
+- [x] **README Updates**
+  - Added SpaCy-YAKE section
+  - Quick start guide
+  - Usage examples
+  - Configuration reference
+
+- [x] **Project Documentation**
+  - Updated `openspec/project.md` with SpaCy-YAKE info
+  - Updated tech stack section
+  - Updated external dependencies
+
+- [x] **OpenSpec Archive**
+  - Archived as `2025-11-29-spacy_yake_integration`
+  - Created `openspec/specs/keyword_extraction/spec.md`
+
+### Deliverables (Phase 0.6)
+- **SpaCy-YAKE extractor** in `infrastructure/ai/spacyyake_extractor.py`
+- **Aspect mapper** in `infrastructure/ai/aspect_mapper.py`
+- **Constants externalized** in `infrastructure/ai/constants.py`
+- **Comprehensive test suite** (78 tests total)
+  - 34 unit tests
+  - 24 aspect mapper tests
+  - 14 integration tests
+  - 6 performance tests
+- **Model report** with benchmarks
+- **Documentation** updated (README, project.md)
+- **Makefile commands** for testing and model download
+
+### Success Criteria
+- [x] Keyword extraction <500ms per text (~50-200ms achieved)
+- [x] All unit tests passing (coverage >90%) (100% coverage)
+- [x] Integration tests passing (14/14 when model available)
+- [x] Aspect mapping working correctly
+- [x] Performance benchmarks documented
+- [x] OpenSpec change archived
+
+### Performance Results
+```
+Single Extraction:     ~50-200ms   (Target: <500ms)
+Batch (30 texts):      ~100-300ms  (Target: <300ms)
+Model Loading:         ~2-5s       (Target: <10s)
+Memory Usage:          ~200-400MB
+Throughput:            ~5-15 pred/s (Target: ≥5)
+```
+
+### Test Commands
+```bash
+make download-spacy-model          # Download SpaCy model
+make test-spacyyake                # All tests (78 total)
+make test-spacyyake-unit           # Unit tests (58 tests)
+make test-spacyyake-integration    # Integration (14 tests)
+make test-spacyyake-performance    # Performance (6 tests)
+```
+
 
 ### Deliverables (Phase 0.5)
 - **PhoBERT ONNX model** converted and optimized
@@ -388,13 +388,14 @@ make test-phobert-performance  # Performance (5 tests)
 - **Integration tests** for combined pipeline
 - **Performance benchmarks** documented
 
-### Success Criteria
-- [ ] PhoBERT inference < 100ms per text
-- [ ] YAKE extraction < 500ms per text
-- [ ] All unit tests passing (coverage > 90%)
-- [ ] Integration tests passing
-- [ ] Models correctly predict Vietnamese sentiment
-- [ ] Keywords extracted accurately
+### Overall Success Criteria (Phase 0 - 0.6)
+- [x] PhoBERT inference < 100ms per text (~50-80ms achieved)
+- [x] SpaCy-YAKE extraction < 500ms per text (~50-200ms achieved)
+- [x] All unit tests passing (coverage > 90%) (100% coverage for both)
+- [x] Integration tests passing (PhoBERT 9/9, SpaCy-YAKE 14/14)
+- [x] Models correctly predict Vietnamese sentiment
+- [x] Keywords extracted accurately
+- [x] All phases documented and archived
 
 ---
 
@@ -408,12 +409,63 @@ make test-phobert-performance  # Performance (5 tests)
 #### 1.1 Module 1: TextPreprocessor
 **File**: `src/modules/preprocessor.py`
 
+**Purpose**: Tiêu chuẩn hóa và hợp nhất nội dung từ nhiều nguồn (caption, comments, transcription) thành một input text đã được xử lý sạch sẽ, tối ưu cho các bước AI downstream. Đồng thời đóng vai trò là **lớp lọc rác nhẹ (lightweight noise filter)**: cung cấp các tín hiệu metadata để Orchestrator có thể quyết định skip những bài viết quá ngắn, chỉ chứa hashtag/emoji hoặc không mang nhiều thông tin.
+
+##### **Input/Output Contract**
+
+**A. ĐẦU VÀO (Input)**
+
+Module này nhận vào một phần của file Atomic JSON (đã load từ MinIO). Cụ thể là các trường liên quan đến nội dung:
+
+```python
+# Input Dictionary
+{
+    "content": {
+        "text": "Xe VinFast VF3 chạy ngon lắm ae ơi... #vinfast",  # Caption gốc
+        "transcription": "Xin chào các bạn, hôm nay mình test xe...", # Kết quả STT (QUAN TRỌNG)
+    },
+    "comments": [
+        {"text": "Giá bao nhiêu?", "likes": 10},
+        {"text": "Xe xấu quá", "likes": 5},
+        # ... list comment thô
+    ]
+}
+```
+
+**B. ĐẦU RA (Output)**
+
+Module trả về object chứa văn bản đã clean và metadata để Orchestrator quyết định bước tiếp theo:
+
+```python
+# Output Dictionary
+{
+    # 1. Văn bản sạch nhất để đưa vào AI (PhoBERT/SpaCy)
+    "clean_text": "xin chào các bạn hôm nay mình test xe... xe vinfast vf3 chạy ngon lắm anh em ơi giá bao nhiêu xe xấu quá",
+    
+    # 2. Metadata thống kê (Để Orchestrator lọc rác)
+    "stats": {
+        "total_length": 150,       # Độ dài sau khi clean
+        "is_too_short": False,     # True nếu < 10 chars
+        "hashtag_ratio": 0.05,     # Tỷ lệ hashtag/text (Cao quá là spam)
+        "has_transcription": True  # Có nội dung video không?
+    },
+    
+    # 3. Breakdown (Để debug xem text này chui từ đâu ra)
+    "source_breakdown": {
+        "caption_len": 50,
+        "transcript_len": 200,
+        "comments_len": 30
+    }
+}
+```
+
 **Tasks**:
 - [ ] **Implement TextPreprocessor class**
   ```python
   # src/modules/preprocessor.py
   import re
-  from typing import Dict, List
+  import unicodedata
+  from typing import Dict, List, Any
   
   class TextPreprocessor:
       def __init__(self):
@@ -425,46 +477,89 @@ make test-phobert-performance  # Performance (5 tests)
               "]+", flags=re.UNICODE)
       
       def merge_content(self, 
-                       text: str, 
-                       comments: List[Dict],
+                       caption: str = "",
+                       comments: List[Dict] = None,
                        transcription: str = None) -> str:
-          """Merge caption + top comments + transcription"""
-          merged = text or ""
+          """
+          Merge content với thứ tự ưu tiên: Transcript > Caption > Comments
           
-          # Add top 5 most-liked comments
+          Transcript thường chứa nội dung video review chi tiết nhất, 
+          nên ưu tiên đưa lên đầu.
+          """
+          if comments is None:
+              comments = []
+          
+          merged_parts = []
+          
+          # 1. Transcript (Content chính - ưu tiên cao nhất)
+          if transcription:
+              merged_parts.append(transcription)
+          
+          # 2. Caption
+          if caption:
+              merged_parts.append(caption)
+          
+          # 3. Top 5 most-liked comments
           sorted_comments = sorted(
               comments,
-              key=lambda x: x.get('likes', 0),
+              key=lambda x: x.get('likes', 0) or x.get('like_count', 0),
               reverse=True
           )[:5]
           
           for comment in sorted_comments:
-              merged += " " + comment.get('text', '')
+              comment_text = comment.get('text') or comment.get('comment_text', '')
+              if comment_text:
+                  merged_parts.append(comment_text)
           
-          # Add transcription if available
-          if transcription:
-              merged += " " + transcription
-          
-          return merged
+          # Join với dấu chấm để tách biệt các phần
+          return " . ".join(merged_parts)
       
       def normalize(self, text: str) -> str:
-          """Clean and normalize text"""
-          # Remove URLs
+          """
+          Clean and normalize text với xử lý đặc biệt cho tiếng Việt
+          """
+          if not text:
+              return ""
+          
+          # 1. Unicode Normalize (Quan trọng cho tiếng Việt)
+          # Chuyển đổi các ký tự Unicode về dạng chuẩn NFC
+          # Ví dụ: 'a' + 'dấu sắc' -> 'á'
+          text = unicodedata.normalize('NFC', text)
+          
+          # 2. Remove URLs
           text = re.sub(r'http\S+|www\S+', '', text)
           
-          # Remove emojis
+          # 3. Remove emojis
           text = self.emoji_pattern.sub('', text)
           
-          # Process hashtags
+          # 4. Process hashtags (giữ lại từ, bỏ dấu #)
           text = re.sub(r'#(\w+)', r'\1', text)
           
-          # Normalize whitespace
+          # 5. Normalize whitespace
           text = ' '.join(text.split())
           
-          # Lowercase
+          # 6. Lowercase
           text = text.lower()
           
           return text.strip()
+      
+      def calculate_noise_stats(self, original_text: str, clean_text: str) -> Dict[str, Any]:
+          """
+          Tính toán các chỉ số để phát hiện spam/noise
+          """
+          clean_len = len(clean_text)
+          is_too_short = clean_len < 10
+          
+          # Tính tỷ lệ hashtag trong text gốc
+          hashtag_count = len(re.findall(r'#\w+', original_text))
+          original_len = len(original_text) if original_text else 1
+          hashtag_ratio = hashtag_count / original_len if original_len > 0 else 0
+          
+          return {
+              "total_length": clean_len,
+              "is_too_short": is_too_short,
+              "hashtag_ratio": hashtag_ratio
+          }
       
       def get_context_window(self, 
                             text: str, 
@@ -479,6 +574,55 @@ make test-phobert-performance  # Performance (5 tests)
           end = min(len(text), pos + len(keyword) + window_size)
           
           return text[start:end]
+      
+      def process(self, raw_data: Dict[str, Any]) -> Dict[str, Any]:
+          """
+          Main entry point for this module
+          
+          Pipeline tích hợp: merge -> normalize -> heuristic filtering signals ->
+          bổ sung metadata breakdown.
+          
+          Component KHÔNG tự quyết định skip post, nhưng cung cấp metadata
+          để Orchestrator có thể quyết định bỏ qua post này trước khi gọi các model AI nặng.
+          """
+          # Extract input data
+          content = raw_data.get('content', {})
+          caption = content.get('text', '') or content.get('description', '')
+          transcription = content.get('transcription', '') or ''
+          comments = raw_data.get('comments', [])
+          
+          # 1. Merge với thứ tự ưu tiên: Transcript > Caption > Comments
+          full_raw_text = self.merge_content(
+              caption=caption,
+              comments=comments,
+              transcription=transcription
+          )
+          
+          # 2. Normalize
+          clean_text = self.normalize(full_raw_text)
+          
+          # 3. Calculate Stats (Noise Detection Signals)
+          noise_stats = self.calculate_noise_stats(full_raw_text, clean_text)
+          
+          # 4. Source Breakdown (để debug)
+          source_breakdown = {
+              "caption_len": len(caption) if caption else 0,
+              "transcript_len": len(transcription) if transcription else 0,
+              "comments_len": sum(
+                  len(c.get('text', '') or c.get('comment_text', ''))
+                  for c in comments[:5]
+              )
+          }
+          
+          return {
+              "clean_text": clean_text,
+              "stats": {
+                  **noise_stats,
+                  "has_transcription": bool(transcription),
+                  "comment_count": min(len(comments), 5)
+              },
+              "source_breakdown": source_breakdown
+          }
   ```
 
 - [ ] **Unit Tests**
@@ -487,32 +631,144 @@ make test-phobert-performance  # Performance (5 tests)
   import pytest
   from src.modules.preprocessor import TextPreprocessor
   
-  def test_merge_content():
+  def test_merge_content_priority():
+      """Test thứ tự ưu tiên: Transcript > Caption > Comments"""
       preprocessor = TextPreprocessor()
       
-      text = "Xe đẹp #vinfast"
+      caption = "Xe đẹp #vinfast"
+      transcription = "Xin chào các bạn, hôm nay mình test xe VinFast VF3"
       comments = [
           {"text": "Giá cao quá", "likes": 100},
           {"text": "Pin yếu", "likes": 50}
       ]
       
-      result = preprocessor.merge_content(text, comments)
+      result = preprocessor.merge_content(caption, comments, transcription)
       
+      # Transcript phải xuất hiện đầu tiên
+      assert result.startswith("Xin chào các bạn")
       assert "xe đẹp" in result.lower()
       assert "giá cao" in result.lower()
       assert "pin yếu" in result.lower()
   
-  def test_normalize():
+  def test_merge_content_no_transcript():
+      """Test merge khi không có transcript"""
       preprocessor = TextPreprocessor()
       
+      caption = "Xe đẹp #vinfast"
+      comments = [
+          {"text": "Giá cao quá", "likes": 100}
+      ]
+      
+      result = preprocessor.merge_content(caption, comments)
+      
+      assert "xe đẹp" in result.lower()
+      assert "giá cao" in result.lower()
+  
+  def test_normalize_unicode():
+      """Test Unicode normalization cho tiếng Việt"""
+      preprocessor = TextPreprocessor()
+      
+      # Test với text có thể có vấn đề Unicode
       text = "Xe ĐẸP lắm 😊 #vinfast http://example.com"
       result = preprocessor.normalize(text)
       
       assert result == "xe đẹp lắm vinfast"
       assert "😊" not in result
       assert "http" not in result
+      assert "#" not in result
+  
+  def test_normalize_vietnamese_diacritics():
+      """Test xử lý dấu tiếng Việt"""
+      preprocessor = TextPreprocessor()
+      
+      text = "Xe VinFast thiết kế đẹp, giá rẻ"
+      result = preprocessor.normalize(text)
+      
+      assert "xe vinfast" in result
+      assert "thiết kế" in result
+      assert "đẹp" in result
+  
+  def test_calculate_noise_stats():
+      """Test tính toán noise statistics"""
+      preprocessor = TextPreprocessor()
+      
+      original = "Xe đẹp #vinfast #xe #oto #car"
+      clean = "xe đẹp vinfast xe oto car"
+      
+      stats = preprocessor.calculate_noise_stats(original, clean)
+      
+      assert stats["total_length"] == len(clean)
+      assert stats["hashtag_ratio"] > 0
+      assert stats["is_too_short"] == False
+  
+  def test_calculate_noise_stats_too_short():
+      """Test phát hiện text quá ngắn"""
+      preprocessor = TextPreprocessor()
+      
+      original = "Xe"
+      clean = "xe"
+      
+      stats = preprocessor.calculate_noise_stats(original, clean)
+      
+      assert stats["is_too_short"] == True
+  
+  def test_process_full_pipeline():
+      """Test toàn bộ pipeline process()"""
+      preprocessor = TextPreprocessor()
+      
+      raw_data = {
+          "content": {
+              "text": "Xe đẹp #vinfast",
+              "transcription": "Xin chào các bạn, hôm nay mình test xe"
+          },
+          "comments": [
+              {"text": "Giá cao quá", "likes": 100},
+              {"text": "Pin yếu", "likes": 50}
+          ]
+      }
+      
+      result = preprocessor.process(raw_data)
+      
+      # Kiểm tra output structure
+      assert "clean_text" in result
+      assert "stats" in result
+      assert "source_breakdown" in result
+      
+      # Kiểm tra clean_text
+      assert "xin chào" in result["clean_text"]
+      assert "xe đẹp" in result["clean_text"]
+      assert "giá cao" in result["clean_text"]
+      
+      # Kiểm tra stats
+      assert result["stats"]["has_transcription"] == True
+      assert result["stats"]["comment_count"] == 2
+      assert result["stats"]["is_too_short"] == False
+      
+      # Kiểm tra source_breakdown
+      assert result["source_breakdown"]["caption_len"] > 0
+      assert result["source_breakdown"]["transcript_len"] > 0
+      assert result["source_breakdown"]["comments_len"] > 0
+  
+  def test_process_no_transcription():
+      """Test process khi không có transcription"""
+      preprocessor = TextPreprocessor()
+      
+      raw_data = {
+          "content": {
+              "text": "Xe đẹp #vinfast"
+          },
+          "comments": [
+              {"text": "Giá cao quá", "likes": 100}
+          ]
+      }
+      
+      result = preprocessor.process(raw_data)
+      
+      assert result["stats"]["has_transcription"] == False
+      assert "xe đẹp" in result["clean_text"]
   
   def test_context_window():
+      """Test extract context around keyword"""
       preprocessor = TextPreprocessor()
       
       text = "Xe này thiết kế đẹp nhưng giá hơi cao"
@@ -525,7 +781,10 @@ make test-phobert-performance  # Performance (5 tests)
 **Acceptance Criteria**:
 - [ ] All tests pass (coverage >90%)
 - [ ] Processing time < 10ms per post
-- [ ] Handles Vietnamese text correctly
+- [ ] Handles Vietnamese text correctly (Unicode normalization)
+- [ ] Merge strategy: Transcript > Caption > Comments (ưu tiên đúng thứ tự)
+- [ ] Noise detection: Phát hiện text quá ngắn (< 10 chars) và hashtag spam (ratio > 0.5)
+- [ ] Output structure đúng format: `clean_text`, `stats`, `source_breakdown`
 
 ---
 

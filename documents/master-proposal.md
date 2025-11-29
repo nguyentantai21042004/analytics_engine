@@ -241,11 +241,11 @@ minio://smap-social-data/
 │                              ▼                                    │
 │  ┌─────────────────────────────────────────────────────────────┐  │
 │  │                   ORCHESTRATOR                              │  │
-│  │  - Validate input (single post)                            │  │
+│  │  - Validate input (single post)                             │  │
 │  │  - Route to pipeline                                        │  │
-│  │  - Handle atomic post processing                           │  │
-│  │  - Error handling & retry                                  │  │
-│  │  Note: For batch, receive N messages from queue,           │  │
+│  │  - Handle atomic post processing                            │  │
+│  │  - Error handling & retry                                   │  │
+│  │  Note: For batch, receive N messages from queue,            │  │
 │  │        each pointing to 1 post file                         │  │
 │  └─────────────────────────────────────────────────────────────┘  │
 │                              │                                    │
