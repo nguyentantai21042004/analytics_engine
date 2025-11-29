@@ -99,81 +99,39 @@
   ```
 
 #### 0.2 Database Migration Setup
-- [ ] **Alembic Configuration**
+- [x] **Alembic Configuration**
   ```bash
-  poetry add alembic
+  uv add alembic
   alembic init migrations
   ```
 
-- [ ] **Initial Migration Script**
-  ```sql
-  -- migrations/versions/001_create_post_analytics.sql
-  CREATE TABLE post_analytics (
-      id VARCHAR(50) PRIMARY KEY,
-      project_id UUID NOT NULL,
-      platform VARCHAR(20) NOT NULL,
-      
-      -- Timestamps
-      published_at TIMESTAMP NOT NULL,
-      analyzed_at TIMESTAMP DEFAULT NOW(),
-      
-      -- Overall Analysis
-      overall_sentiment VARCHAR(10) NOT NULL,
-      overall_sentiment_score DECIMAL(4,3),
-      overall_confidence DECIMAL(4,3),
-      
-      -- Intent
-      primary_intent VARCHAR(20) NOT NULL,
-      intent_confidence DECIMAL(4,3),
-      
-      -- Impact
-      impact_score DECIMAL(5,2) NOT NULL,
-      risk_level VARCHAR(10) NOT NULL,
-      is_viral BOOLEAN DEFAULT FALSE,
-      is_kol BOOLEAN DEFAULT FALSE,
-      
-      -- JSONB
-      aspects_breakdown JSONB,
-      keywords JSONB,
-      sentiment_probabilities JSONB,
-      impact_breakdown JSONB,
-      
-      -- Raw metrics
-      view_count INTEGER DEFAULT 0,
-      like_count INTEGER DEFAULT 0,
-      comment_count INTEGER DEFAULT 0,
-      share_count INTEGER DEFAULT 0,
-      save_count INTEGER DEFAULT 0,
-      follower_count INTEGER DEFAULT 0,
-      
-      -- Processing metadata
-      processing_time_ms INTEGER,
-      model_version VARCHAR(50),
-      
-      -- Constraints
-      CONSTRAINT check_sentiment_score 
-          CHECK (overall_sentiment_score BETWEEN -1 AND 1),
-      CONSTRAINT check_impact_score 
-          CHECK (impact_score BETWEEN 0 AND 100)
-  );
-  
-  -- Indexes
-  CREATE INDEX idx_project_time 
-      ON post_analytics(project_id, published_at DESC);
-  CREATE INDEX idx_sentiment 
-      ON post_analytics(project_id, overall_sentiment);
-  CREATE INDEX idx_intent 
-      ON post_analytics(project_id, primary_intent);
-  CREATE INDEX idx_risk 
-      ON post_analytics(project_id, risk_level) 
-      WHERE risk_level IN ('HIGH', 'CRITICAL');
-  CREATE INDEX idx_aspects_gin 
-      ON post_analytics USING GIN (aspects_breakdown);
-  CREATE INDEX idx_keywords_gin 
-      ON post_analytics USING GIN (keywords);
-  ```
+- [x] **Initial Migration Script**
+  - Created `post_analytics` table with all required fields
+  - Added indexes for performance
+  - Applied migration successfully
 
-#### 0.3 ONNX Model Preparation
+### Deliverables (Phase 0)
+- ✅ **Git repository** with layered architecture structure
+- ✅ **Docker Compose dev environment** running (Postgres, Redis, MinIO, RabbitMQ)
+- ✅ **Database migration scripts** with Alembic
+- ✅ **Project structure** following `cmd/`, `internal/`, `core/`, `models/`, `interfaces/`, `repositories/`, `services/`, `infrastructure/`
+
+### Success Criteria
+- [x] `docker-compose up` running successfully
+- [x] Database migrations applied
+- [x] API and Consumer entry points working
+- [x] Architecture documented
+
+---
+
+## PHASE 0.5: AI MODEL INTEGRATION
+**Duration**: 2-3 days  
+**Team**: ML Engineer + Backend Engineer  
+**Goal**: Integrate and test PhoBERT (ONNX) and YAKE models thoroughly
+
+### Tasks
+
+#### 0.5.1 PhoBERT ONNX Setup
 - [ ] **Convert PhoBERT to ONNX**
   ```bash
   # Script: scripts/convert_phobert_onnx.py
@@ -192,48 +150,273 @@
       --hidden_size 768
   ```
 
-- [ ] **Test ONNX Model**
+- [ ] **Create Model Wrapper**
   ```python
-  # tests/test_onnx_model.py
+  # infrastructure/ai/phobert_onnx.py
   import onnxruntime as ort
   import numpy as np
+  from transformers import AutoTokenizer
   
-  def test_onnx_inference():
-      session = ort.InferenceSession("models/phobert_sentiment_cpu.onnx")
+  class PhoBERTONNX:
+      def __init__(self, model_path: str):
+          self.session = ort.InferenceSession(model_path)
+          self.tokenizer = AutoTokenizer.from_pretrained("vinai/phobert-base")
       
-      # Dummy input
-      input_ids = np.random.randint(0, 1000, (1, 128)).astype(np.int64)
-      attention_mask = np.ones((1, 128)).astype(np.int64)
-      
-      outputs = session.run(
-          None,
-          {
-              "input_ids": input_ids,
-              "attention_mask": attention_mask
+      def predict(self, text: str) -> dict:
+          # Tokenize
+          inputs = self.tokenizer(
+              text,
+              max_length=128,
+              padding="max_length",
+              truncation=True,
+              return_tensors="np"
+          )
+          
+          # Inference
+          outputs = self.session.run(
+              None,
+              {
+                  "input_ids": inputs["input_ids"].astype(np.int64),
+                  "attention_mask": inputs["attention_mask"].astype(np.int64)
+              }
+          )
+          
+          # Process output
+          logits = outputs[0][0]
+          probabilities = self._softmax(logits)
+          
+          return {
+              "sentiment": self._get_label(probabilities),
+              "probabilities": {
+                  "POSITIVE": float(probabilities[0]),
+                  "NEUTRAL": float(probabilities[1]),
+                  "NEGATIVE": float(probabilities[2])
+              },
+              "confidence": float(max(probabilities))
           }
-      )
       
-      assert outputs[0].shape == (1, 3)  # 3 classes
-      print(f"✅ ONNX inference works: {outputs[0]}")
+      def _softmax(self, x):
+          exp_x = np.exp(x - np.max(x))
+          return exp_x / exp_x.sum()
+      
+      def _get_label(self, probs):
+          labels = ["POSITIVE", "NEUTRAL", "NEGATIVE"]
+          return labels[np.argmax(probs)]
   ```
 
-### Deliverables (Phase 0)
-- **Git repository** with folder structure
-- **Docker Compose dev environment** running
-- **Database migration scripts**
-- **ONNX model converted & tested**
+- [ ] **Unit Tests for PhoBERT**
+  ```python
+  # tests/unit/test_phobert_onnx.py
+  import pytest
+  from infrastructure.ai.phobert_onnx import PhoBERTONNX
+  
+  @pytest.fixture
+  def model():
+      return PhoBERTONNX("models/phobert_sentiment_cpu.onnx")
+  
+  def test_onnx_inference_speed(model):
+      text = "Xe này đẹp quá!"
+      
+      import time
+      start = time.time()
+      result = model.predict(text)
+      duration = (time.time() - start) * 1000
+      
+      assert duration < 100  # Must be < 100ms
+      assert "sentiment" in result
+      assert "probabilities" in result
+      assert "confidence" in result
+  
+  def test_positive_sentiment(model):
+      text = "Xe rất đẹp, pin trâu, giá hợp lý!"
+      result = model.predict(text)
+      
+      assert result["sentiment"] == "POSITIVE"
+      assert result["confidence"] > 0.7
+  
+  def test_negative_sentiment(model):
+      text = "Xe xấu, pin yếu, giá đắt, lỗi nhiều!"
+      result = model.predict(text)
+      
+      assert result["sentiment"] == "NEGATIVE"
+      assert result["confidence"] > 0.7
+  
+  def test_batch_inference(model):
+      texts = [
+          "Xe đẹp quá!",
+          "Pin yếu quá!",
+          "Bình thường thôi"
+      ]
+      
+      results = [model.predict(text) for text in texts]
+      
+      assert len(results) == 3
+      assert results[0]["sentiment"] == "POSITIVE"
+      assert results[1]["sentiment"] == "NEGATIVE"
+      assert results[2]["sentiment"] == "NEUTRAL"
+  ```
+
+#### 0.5.2 YAKE Integration
+- [ ] **Install and Test YAKE**
+  ```bash
+  uv add yake
+  ```
+
+- [ ] **Create YAKE Wrapper**
+  ```python
+  # infrastructure/ai/yake_extractor.py
+  import yake
+  from typing import List, Dict
+  
+  class YAKEExtractor:
+      def __init__(self):
+          self.extractor = yake.KeywordExtractor(
+              lan="vi",
+              n=2,  # bigrams
+              dedupLim=0.7,
+              top=10,
+              features=None
+          )
+      
+      def extract(self, text: str) -> List[Dict]:
+          keywords = self.extractor.extract_keywords(text)
+          
+          results = []
+          for keyword, score in keywords:
+              # YAKE score: lower is better, convert to weight
+              weight = max(0, 1 - score)
+              
+              if weight > 0.3:  # Filter low-quality keywords
+                  results.append({
+                      "keyword": keyword,
+                      "weight": weight,
+                      "score": score,
+                      "method": "YAKE"
+                  })
+          
+          return results
+  ```
+
+- [ ] **Unit Tests for YAKE**
+  ```python
+  # tests/unit/test_yake_extractor.py
+  import pytest
+  from infrastructure.ai.yake_extractor import YAKEExtractor
+  
+  @pytest.fixture
+  def extractor():
+      return YAKEExtractor()
+  
+  def test_extract_keywords(extractor):
+      text = "Xe VinFast VF8 có thiết kế đẹp, pin trâu nhưng giá hơi cao"
+      
+      keywords = extractor.extract(text)
+      
+      assert len(keywords) > 0
+      assert all("keyword" in kw for kw in keywords)
+      assert all("weight" in kw for kw in keywords)
+      assert all(kw["weight"] > 0.3 for kw in keywords)
+  
+  def test_vietnamese_text(extractor):
+      text = "Chất lượng sản phẩm tốt, dịch vụ bảo hành chu đáo"
+      
+      keywords = extractor.extract(text)
+      
+      # Should extract Vietnamese keywords
+      keyword_texts = [kw["keyword"] for kw in keywords]
+      assert any("chất lượng" in kw.lower() for kw in keyword_texts)
+  
+  def test_performance(extractor):
+      text = "Xe VinFast VF8 có thiết kế đẹp" * 10
+      
+      import time
+      start = time.time()
+      keywords = extractor.extract(text)
+      duration = (time.time() - start) * 1000
+      
+      assert duration < 500  # Must be < 500ms
+      assert len(keywords) > 0
+  ```
+
+#### 0.5.3 Integration Tests
+- [ ] **Combined Model Test**
+  ```python
+  # tests/integration/test_ai_models.py
+  import pytest
+  from infrastructure.ai.phobert_onnx import PhoBERTONNX
+  from infrastructure.ai.yake_extractor import YAKEExtractor
+  
+  @pytest.fixture
+  def phobert():
+      return PhoBERTONNX("models/phobert_sentiment_cpu.onnx")
+  
+  @pytest.fixture
+  def yake():
+      return YAKEExtractor()
+  
+  def test_full_pipeline(phobert, yake):
+      text = "Xe VinFast VF8 có thiết kế đẹp, pin trâu nhưng giá hơi cao"
+      
+      # Extract keywords
+      keywords = yake.extract(text)
+      assert len(keywords) > 0
+      
+      # Analyze sentiment
+      sentiment = phobert.predict(text)
+      assert sentiment["sentiment"] in ["POSITIVE", "NEUTRAL", "NEGATIVE"]
+      
+      # Combined result
+      result = {
+          "text": text,
+          "keywords": keywords,
+          "sentiment": sentiment
+          }
+      
+      assert "keywords" in result
+      assert "sentiment" in result
+  
+  def test_performance_benchmark(phobert, yake):
+      texts = [
+          "Xe đẹp, pin tốt",
+          "Giá cao, chất lượng kém",
+          "Bình thường, không có gì đặc biệt"
+      ] * 10  # 30 texts
+      
+      import time
+      start = time.time()
+      
+      for text in texts:
+          keywords = yake.extract(text)
+          sentiment = phobert.predict(text)
+      
+      duration = time.time() - start
+      avg_time = (duration / len(texts)) * 1000
+      
+      assert avg_time < 200  # Average < 200ms per text
+  ```
+
+### Deliverables (Phase 0.5)
+- **PhoBERT ONNX model** converted and optimized
+- **YAKE extractor** configured for Vietnamese
+- **Model wrappers** in `infrastructure/ai/`
+- **Comprehensive unit tests** for both models
+- **Integration tests** for combined pipeline
+- **Performance benchmarks** documented
 
 ### Success Criteria
-- [ ] `docker-compose up` running successfully
-- [ ] Pytest with 1 test sample pass
-- [ ] ONNX inference < 100ms
+- [ ] PhoBERT inference < 100ms per text
+- [ ] YAKE extraction < 500ms per text
+- [ ] All unit tests passing (coverage > 90%)
+- [ ] Integration tests passing
+- [ ] Models correctly predict Vietnamese sentiment
+- [ ] Keywords extracted accurately
 
 ---
 
-## PHASE 1: FOUNDATION
-**Duration**: 10 working days  
+## PHASE 1: CORE MODULES (NO AI)
+**Duration**: 5-7 working days  
 **Team**: 2 Backend Engineers  
-**Goal**: Core pipeline working end-to-end
+**Goal**: Implement core business logic modules WITHOUT AI dependencies
 
 ### Core Modules
 
