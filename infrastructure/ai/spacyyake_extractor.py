@@ -100,13 +100,56 @@ class SpacyYakeExtractor:
             self.nlp = None
             raise ImportError("spaCy is not installed")
 
-        try:
-            self.nlp = spacy.load(spacy_model)
-            self.logger.info(f"Loaded SpaCy model: {spacy_model}")
-        except OSError:
-            self.logger.warning(f"Model {spacy_model} not found, attempting download")
-            spacy.cli.download(spacy_model)
-            self.nlp = spacy.load(spacy_model)
+        # Smart model loading with graceful fallback
+        # Priority order: user model -> multilingual -> blank Vietnamese
+        model_loaded = False
+        
+        # Build fallback chain based on user preference
+        fallback_models = [spacy_model]
+        
+        # If user specified Vietnamese model, add fallbacks
+        if "vi_core" in spacy_model:
+            # Try smaller Vietnamese model if large fails
+            if "_lg" in spacy_model:
+                fallback_models.append(spacy_model.replace("_lg", "_sm"))
+            elif "_sm" in spacy_model:
+                fallback_models.append(spacy_model.replace("_sm", "_lg"))
+        
+        # Always try multilingual model (official, stable)
+        if "xx_ent_wiki_sm" not in fallback_models:
+            fallback_models.append("xx_ent_wiki_sm")
+        
+        # Try English model as additional fallback
+        if "en_core_web_sm" not in fallback_models:
+            fallback_models.append("en_core_web_sm")
+        
+        # Try to load from fallback chain
+        for model_name in fallback_models:
+            try:
+                self.nlp = spacy.load(model_name)
+                self.logger.info(f"✅ Loaded SpaCy model: {model_name}")
+                model_loaded = True
+                break
+            except OSError:
+                continue
+        
+        # Final fallback: Blank Vietnamese model (tokenizer only)
+        if not model_loaded:
+            try:
+                self.logger.warning(
+                    f"⚠️  No pre-trained model found. Using blank 'vi' model (tokenizer only).\n"
+                    f"Attempted models: {', '.join(fallback_models)}\n"
+                    f"To improve AI Discovery, install multilingual model:\n"
+                    f"  uv run python -m spacy download xx_ent_wiki_sm"
+                )
+                self.nlp = spacy.blank("vi")
+                # Blank model needs sentencizer for sentence segmentation
+                if "sentencizer" not in self.nlp.pipe_names:
+                    self.nlp.add_pipe("sentencizer")
+                self.logger.info("✅ Using blank Vietnamese model with sentencizer")
+            except Exception as e:
+                self.logger.error(f"Failed to create blank model: {e}")
+                self.nlp = None
 
         # Initialize YAKE
         if yake is None:
@@ -158,7 +201,14 @@ class SpacyYakeExtractor:
         return entities[:15]  # Limit to top 15
 
     def _extract_noun_chunks(self, doc) -> List[str]:
-        """Extract and filter noun chunks.
+        """Extract and filter noun chunks using POS tagging.
+
+        Handles both full models (with POS tagging) and blank models (tokenizer only).
+        Uses flexible extraction logic that adapts to model capabilities.
+
+        Note: Uses manual POS-based extraction instead of doc.noun_chunks
+        because multilingual models (xx) and some languages don't support
+        the noun_chunks iterator.
 
         Args:
             doc: SpaCy Doc object
@@ -167,15 +217,62 @@ class SpacyYakeExtractor:
             List of noun chunk strings
         """
         chunks = []
-        for chunk in doc.noun_chunks:
-            # Filter chunks by relevance criteria
-            if (
-                len(chunk.text.split()) >= 2
-                and len(chunk.text.split()) <= 4
-                and len(chunk.text.strip()) > 3
-            ):
-                chunks.append(chunk.text.strip())
-        return chunks[:20]  # Limit to top 20
+        
+        # Check if model has POS tagging capability
+        has_pos_tagging = any(
+            hasattr(token, 'pos_') and token.pos_ 
+            for token in doc 
+            if hasattr(token, 'pos_')
+        )
+
+        # Method 1: Use built-in noun chunks if available (full models)
+        if doc.has_annotation("DEP"):
+            try:
+                for chunk in doc.noun_chunks:
+                    text = chunk.text.strip()
+                    if len(text) > 1:
+                        chunks.append(text)
+            except (AttributeError, KeyError):
+                # Some models don't support noun_chunks
+                pass
+
+        # Method 2: Extract based on POS tags (if model has POS tagging)
+        if has_pos_tagging:
+            # Extract single nouns and proper nouns
+            for token in doc:
+                if token.pos_ in ["NOUN", "PROPN"] and not token.is_stop and not token.is_punct:
+                    text = token.text.strip()
+                    if len(text) > 1:  # Filter out single characters
+                        chunks.append(text)
+
+            # Extract simple noun phrases (Noun + Adj, Noun + Noun)
+            # Pattern: Noun + Adjective (xe đẹp) or Noun + Noun (trạm sạc)
+            for i in range(len(doc) - 1):
+                t1, t2 = doc[i], doc[i + 1]
+                if t1.pos_ == "NOUN" and t2.pos_ in ["ADJ", "NOUN"]:
+                    phrase = f"{t1.text} {t2.text}".strip()
+                    if len(phrase) > 3:  # Filter short phrases
+                        chunks.append(phrase)
+        else:
+            # Method 3: Fallback for blank models (no POS tagging)
+            # Extract all non-stopword tokens with length > 2
+            # This is less precise but works with blank models
+            for token in doc:
+                if not token.is_stop and not token.is_punct and len(token.text) > 2:
+                    text = token.text.strip()
+                    if text:
+                        chunks.append(text)
+
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_chunks = []
+        for chunk in chunks:
+            chunk_lower = chunk.lower()
+            if chunk_lower not in seen:
+                seen.add(chunk_lower)
+                unique_chunks.append(chunk)
+
+        return unique_chunks[:20]  # Limit to top 20
 
     def _combine_keyword_sources(
         self, yake_keywords: List[tuple], entities: List[tuple], noun_chunks: List[str]

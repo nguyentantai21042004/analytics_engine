@@ -69,10 +69,13 @@ ERROR_MODEL_LOAD_FAILED = "Failed to load PhoBERT model: {error}"
 # ============================================================================
 
 # SpaCy Model Configuration
-DEFAULT_SPACY_MODEL = os.getenv("SPACY_MODEL", "en_core_web_sm")
+# Use multilingual model (xx_ent_wiki_sm) as default for compatibility
+# Vietnamese models (vi_core_news_*) are community-built and may not work with spaCy 3.8.11
+# The code will automatically fallback to blank("vi") if no model is available
+DEFAULT_SPACY_MODEL = os.getenv("SPACY_MODEL", "xx_ent_wiki_sm")
 
 # YAKE Configuration
-DEFAULT_YAKE_LANGUAGE = os.getenv("YAKE_LANGUAGE", "en")
+DEFAULT_YAKE_LANGUAGE = os.getenv("YAKE_LANGUAGE", "vi")
 DEFAULT_YAKE_N = int(os.getenv("YAKE_N", "2"))
 DEFAULT_YAKE_DEDUP_LIM = float(os.getenv("YAKE_DEDUP_LIM", "0.8"))
 DEFAULT_YAKE_MAX_KEYWORDS = int(os.getenv("YAKE_MAX_KEYWORDS", "30"))
