@@ -22,6 +22,7 @@ dependencies = [
     "spacy>=3.7.0",
     "yake>=0.4.8",
     "aio-pika>=9.0.0",
+    "pyyaml>=6.0.1",
 ]
 
 [project.optional-dependencies]

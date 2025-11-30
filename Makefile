@@ -1,4 +1,4 @@
-.PHONY: help install dev-install upgrade run-api run-consumer dev-up dev-down dev-logs download-phobert download-spacy-model test test-phobert test-spacyyake clean format lint db-init db-migrate db-upgrade db-downgrade
+.PHONY: help install dev-install upgrade run-api run-consumer run-example-preprocessing run-example-intent dev-up dev-down dev-logs download-phobert download-spacy-model test test-phobert test-spacyyake test-preprocessing test-intent clean format lint db-init db-migrate db-upgrade db-downgrade
 
 # ==============================================================================
 # HELPERS
@@ -14,6 +14,7 @@ help:
 	@echo "  make run-api                 - Run API service locally"
 	@echo "  make run-consumer            - Run Consumer service locally"
 	@echo "  make run-example-preprocessing - Run Text Preprocessor example"
+	@echo "  make run-example-intent      - Run Intent Classifier example"
 	@echo ""
 	@echo "🐳 DEV ENVIRONMENT (Docker):"
 	@echo "  make dev-up                  - Start dev services (Postgres, Redis, MinIO, RabbitMQ)"
@@ -29,6 +30,7 @@ help:
 	@echo "  make test-phobert            - Run PhoBERT tests"
 	@echo "  make test-spacyyake          - Run SpaCy-YAKE tests"
 	@echo "  make test-preprocessing      - Run Text Preprocessor tests"
+	@echo "  make test-intent             - Run Intent Classifier tests"
 	@echo ""
 	@echo "🗄️  DATABASE:"
 	@echo "  make db-init                 - Initialize Alembic"
@@ -65,6 +67,10 @@ run-consumer:
 run-example-preprocessing:
 	@echo "Running Text Preprocessor example..."
 	@PYTHONPATH=. uv run examples/preprocess_example.py
+
+run-example-intent:
+	@echo "Running Intent Classifier example..."
+	@PYTHONPATH=. uv run examples/intent_classifier_example.py
 
 # ==============================================================================
 # DEV ENVIRONMENT
@@ -119,6 +125,22 @@ test-preprocessing-integration:
 test-preprocessing-performance:
 	@echo "Running Text Preprocessor performance tests..."
 	@uv run pytest tests/preprocessing/test_performance.py -v
+
+test-intent:
+	@echo "Running Intent Classifier tests..."
+	@uv run pytest tests/intent/ -v
+
+test-intent-unit:
+	@echo "Running Intent Classifier unit tests..."
+	@uv run pytest tests/intent/test_unit.py -v
+
+test-intent-integration:
+	@echo "Running Intent Classifier integration tests..."
+	@uv run pytest tests/intent/test_integration.py -v
+
+test-intent-performance:
+	@echo "Running Intent Classifier performance tests..."
+	@uv run pytest tests/intent/test_performance.py -v
 
 # ==============================================================================
 # DATABASE

@@ -64,6 +64,11 @@ class Settings(BaseSettings):
     preprocessor_min_text_length: int = 10
     preprocessor_max_comments: int = 5
 
+    # Intent Classifier
+    intent_classifier_enabled: bool = True
+    intent_classifier_confidence_threshold: float = 0.5
+    intent_patterns_path: str = "config/intent_patterns.yaml"
+
 
 settings = Settings()
 
