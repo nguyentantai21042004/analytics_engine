@@ -1,5 +1,7 @@
 """Message queue consumer entry point for Analytics Engine."""
 
+from __future__ import annotations
+
 import json
 from contextlib import contextmanager
 from typing import Optional, Callable, Any, TYPE_CHECKING, Iterator
@@ -15,16 +17,21 @@ except ImportError:
     else:
         IncomingMessage = Any
 
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, Session
+
 from core.logger import logger
 from core.config import settings
 from infrastructure.ai import PhoBERTONNX, SpacyYakeExtractor
-from infrastructure.storage.minio_client import MinioAdapter
+from infrastructure.storage.minio_client import (
+    MinioAdapter,
+    MinioAdapterError,
+    MinioObjectNotFoundError,
+    MinioDecompressionError,
+)
 from models.database import Base
-from repositories.analytics_repository import AnalyticsRepository
+from repositories.analytics_repository import AnalyticsRepository, AnalyticsRepositoryError
 from services.analytics.orchestrator import AnalyticsOrchestrator
-
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
 
 
 def _create_session_factory() -> sessionmaker:
@@ -73,43 +80,63 @@ def create_message_handler(
 
         Args:
             message: Incoming message from RabbitMQ queue
+
+        The handler processes messages in the following order:
+        1. Decode and parse JSON envelope
+        2. Fetch post data from MinIO if data_ref is present
+        3. Run analytics pipeline via orchestrator
+        4. Persist results to database
+
+        Errors are logged and re-raised to trigger message nack.
         """
         async with message.process():
+            post_id = "unknown"
             try:
                 # Decode message body
-                body = message.body.decode()
-                logger.info(f"Received message: {body[:100]}...")
+                body = message.body.decode("utf-8")
+                logger.info("Received message: %s...", body[:100])
 
                 # Parse JSON envelope
-                envelope = json.loads(body)
+                try:
+                    envelope = json.loads(body)
+                except json.JSONDecodeError as exc:
+                    logger.error("Invalid JSON in message: %s", exc)
+                    raise
 
                 # Determine data source: direct post_data or MinIO reference
                 post_data: dict[str, Any]
                 if "data_ref" in envelope:
-                    ref = envelope["data_ref"] or {}
+                    ref = envelope.get("data_ref") or {}
                     bucket = ref.get("bucket")
                     path = ref.get("path")
+
                     if not bucket or not path:
                         raise ValueError("Invalid data_ref: bucket and path are required")
+
+                    logger.debug("Fetching post from MinIO: %s/%s", bucket, path)
                     try:
-                        # download_json() auto-decompresses if file is compressed
                         post_data = minio_adapter.download_json(bucket, path)
-                    except RuntimeError as e:
-                        error_msg = str(e)
-                        if "decompress" in error_msg.lower():
-                            logger.error(
-                                "Decompression failed for MinIO object %s/%s: %s",
-                                bucket,
-                                path,
-                                error_msg,
-                            )
-                            raise ValueError(f"Decompression failed: {error_msg}") from e
+                    except MinioObjectNotFoundError:
+                        logger.error("MinIO object not found: %s/%s", bucket, path)
+                        raise
+                    except MinioDecompressionError as exc:
+                        logger.error(
+                            "Decompression failed for MinIO object %s/%s: %s",
+                            bucket,
+                            path,
+                            exc,
+                        )
+                        raise
+                    except MinioAdapterError as exc:
+                        logger.error("MinIO error fetching %s/%s: %s", bucket, path, exc)
                         raise
                 else:
                     post_data = envelope
 
-                post_id = post_data.get("meta", {}).get("id", "unknown")
-                platform = post_data.get("meta", {}).get("platform", "UNKNOWN")
+                # Extract identifiers for logging
+                meta = post_data.get("meta") or {}
+                post_id = meta.get("id", "unknown")
+                platform = meta.get("platform", "UNKNOWN")
                 logger.info("Processing post %s from %s via orchestrator", post_id, platform)
 
                 # Create DB-backed repository and orchestrator per message
@@ -127,19 +154,28 @@ def create_message_handler(
                     )
                     result = orchestrator.process_post(post_data)
 
-                logger.info("Message processed successfully and persisted: %s", post_id)
+                logger.info(
+                    "Message processed successfully: post_id=%s, impact_score=%.2f",
+                    post_id,
+                    result.get("impact_score", 0.0),
+                )
 
                 # Message will be auto-acked when context exits without exception
 
-            except json.JSONDecodeError as e:
-                logger.error(f"Invalid JSON in message: {e}")
-                # Message will be auto-nacked (rejected)
+            except (json.JSONDecodeError, ValueError) as exc:
+                # Validation errors - message is malformed, don't retry
+                logger.error("Validation error for post_id=%s: %s", post_id, exc)
                 raise
 
-            except Exception as e:
-                logger.error(f"Error processing message: {e}")
+            except (MinioAdapterError, AnalyticsRepositoryError) as exc:
+                # Infrastructure errors - may be transient, could retry
+                logger.error("Infrastructure error for post_id=%s: %s", post_id, exc)
+                raise
+
+            except Exception as exc:
+                # Unexpected errors
+                logger.error("Unexpected error processing post_id=%s: %s", post_id, exc)
                 logger.exception("Message processing error details:")
-                # Message will be auto-nacked (rejected)
                 raise
 
     return message_handler

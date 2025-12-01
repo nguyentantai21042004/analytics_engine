@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 import pytest  # type: ignore
@@ -50,7 +50,7 @@ def _make_sample_post() -> Dict[str, Any]:
             "id": "consumer_post_1",
             "project_id": "11111111-1111-1111-1111-111111111111",
             "platform": "facebook",
-            "published_at": datetime.utcnow().isoformat(),
+            "published_at": datetime.now(timezone.utc).isoformat(),
         },
         "content": {
             "text": "Xe đẹp nhưng giá hơi cao",

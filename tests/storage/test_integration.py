@@ -4,7 +4,11 @@ import json
 import pytest
 from unittest.mock import MagicMock, patch, PropertyMock
 
-from infrastructure.storage.minio_client import MinioAdapter
+from infrastructure.storage.minio_client import (
+    MinioAdapter,
+    MinioAdapterError,
+    MinioDecompressionError,
+)
 from infrastructure.storage.constants import (
     METADATA_COMPRESSION_ALGORITHM,
     METADATA_COMPRESSION_LEVEL,
@@ -109,8 +113,8 @@ class TestDownloadJsonWithCompression:
         mock_response.read.return_value = b"not valid compressed data"
         adapter._client.get_object.return_value = mock_response
 
-        # Execute - should raise RuntimeError
-        with pytest.raises(RuntimeError, match="Failed to fetch from MinIO"):
+        # Execute - should raise MinioDecompressionError
+        with pytest.raises(MinioDecompressionError):
             adapter.download_json("test-bucket", "test/path.json")
 
     def test_download_json_invalid_json(self, adapter):
@@ -125,8 +129,8 @@ class TestDownloadJsonWithCompression:
         mock_response.read.return_value = b"not valid json"
         adapter._client.get_object.return_value = mock_response
 
-        # Execute - should raise RuntimeError
-        with pytest.raises(RuntimeError, match="Failed to fetch from MinIO"):
+        # Execute - should raise MinioAdapterError
+        with pytest.raises(MinioAdapterError, match="Invalid JSON"):
             adapter.download_json("test-bucket", "test/path.json")
 
     def test_download_json_non_dict_json(self, adapter):
@@ -141,8 +145,8 @@ class TestDownloadJsonWithCompression:
         mock_response.read.return_value = b'[1, 2, 3]'
         adapter._client.get_object.return_value = mock_response
 
-        # Execute - should raise RuntimeError
-        with pytest.raises(RuntimeError, match="Expected JSON object"):
+        # Execute - should raise MinioAdapterError
+        with pytest.raises(MinioAdapterError, match="Expected JSON object"):
             adapter.download_json("test-bucket", "test/path.json")
 
 

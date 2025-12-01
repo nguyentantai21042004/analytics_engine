@@ -4,7 +4,7 @@ This module tests the orchestrator's ability to coordinate the full analytics
 pipeline, apply skip logic, and handle edge cases gracefully.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List
 from unittest.mock import MagicMock, Mock
 
@@ -182,7 +182,7 @@ def _make_sample_post_data() -> Dict[str, Any]:
             "id": "test_post_123",
             "project_id": "project_1",
             "platform": "facebook",
-            "published_at": datetime.utcnow(),
+            "published_at": datetime.now(timezone.utc),
         },
         "content": {
             "text": "Xe đẹp lắm, rất hài lòng!",
@@ -611,3 +611,170 @@ class TestDataMapping:
         assert "PRICE" in result["aspects_breakdown"]
         assert result["aspects_breakdown"]["DESIGN"]["label"] == "POSITIVE"
         assert result["aspects_breakdown"]["PRICE"]["label"] == "NEGATIVE"
+
+
+class TestValidation:
+    """Tests for input validation."""
+
+    def test_missing_post_id_raises_error(self) -> None:
+        """Should raise ValueError when meta.id is missing."""
+        repo = FakeRepository()
+        orchestrator = AnalyticsOrchestrator(
+            repository=repo,
+            preprocessor=FakeTextPreprocessor(),
+            intent_classifier=FakeIntentClassifier(),
+        )
+
+        post_data = _make_sample_post_data()
+        del post_data["meta"]["id"]
+
+        with pytest.raises(ValueError, match="meta.id"):
+            orchestrator.process_post(post_data)
+
+    def test_empty_meta_raises_error(self) -> None:
+        """Should raise ValueError when meta is empty."""
+        repo = FakeRepository()
+        orchestrator = AnalyticsOrchestrator(
+            repository=repo,
+            preprocessor=FakeTextPreprocessor(),
+            intent_classifier=FakeIntentClassifier(),
+        )
+
+        post_data = _make_sample_post_data()
+        post_data["meta"] = {}
+
+        with pytest.raises(ValueError, match="meta.id"):
+            orchestrator.process_post(post_data)
+
+    def test_invalid_repository_raises_error(self) -> None:
+        """Should raise TypeError when repository doesn't have save method."""
+        with pytest.raises(TypeError, match="save"):
+            AnalyticsOrchestrator(repository="not_a_repository")
+
+
+class TestProcessingMetadata:
+    """Tests for processing metadata in results."""
+
+    def test_processing_time_is_recorded(self) -> None:
+        """Processing time should be recorded in result."""
+        repo = FakeRepository()
+        orchestrator = AnalyticsOrchestrator(
+            repository=repo,
+            preprocessor=FakeTextPreprocessor(),
+            intent_classifier=FakeIntentClassifier(),
+            keyword_extractor=FakeKeywordExtractor(),
+            sentiment_analyzer=FakeSentimentAnalyzer(),
+            impact_calculator=FakeImpactCalculator(),
+        )
+
+        post_data = _make_sample_post_data()
+        result = orchestrator.process_post(post_data)
+
+        assert "processing_time_ms" in result
+        assert isinstance(result["processing_time_ms"], int)
+        assert result["processing_time_ms"] >= 0
+
+    def test_model_version_is_recorded(self) -> None:
+        """Model version should be recorded in result."""
+        repo = FakeRepository()
+        orchestrator = AnalyticsOrchestrator(
+            repository=repo,
+            preprocessor=FakeTextPreprocessor(),
+            intent_classifier=FakeIntentClassifier(),
+            keyword_extractor=FakeKeywordExtractor(),
+            sentiment_analyzer=FakeSentimentAnalyzer(),
+            impact_calculator=FakeImpactCalculator(),
+        )
+
+        post_data = _make_sample_post_data()
+        result = orchestrator.process_post(post_data)
+
+        assert "model_version" in result
+        assert result["model_version"] == AnalyticsOrchestrator.MODEL_VERSION
+
+    def test_skipped_result_has_processing_metadata(self) -> None:
+        """Skipped results should also have processing metadata."""
+        repo = FakeRepository()
+        preprocessor = FakeTextPreprocessor(
+            clean_text="ok",
+            stats={"is_too_short": True, "total_length": 2},
+        )
+
+        orchestrator = AnalyticsOrchestrator(
+            repository=repo,
+            preprocessor=preprocessor,
+            intent_classifier=FakeIntentClassifier(),
+        )
+
+        post_data = _make_sample_post_data()
+        result = orchestrator.process_post(post_data)
+
+        assert "processing_time_ms" in result
+        assert "model_version" in result
+
+
+class TestTypeCoercion:
+    """Tests for type coercion and safe value handling."""
+
+    def test_string_metrics_are_converted_to_int(self) -> None:
+        """String metric values should be converted to integers."""
+        repo = FakeRepository()
+        orchestrator = AnalyticsOrchestrator(
+            repository=repo,
+            preprocessor=FakeTextPreprocessor(),
+            intent_classifier=FakeIntentClassifier(),
+            keyword_extractor=FakeKeywordExtractor(),
+            sentiment_analyzer=FakeSentimentAnalyzer(),
+            impact_calculator=FakeImpactCalculator(),
+        )
+
+        post_data = _make_sample_post_data()
+        post_data["interaction"]["views"] = "1000"  # String instead of int
+        post_data["interaction"]["likes"] = "50"
+
+        result = orchestrator.process_post(post_data)
+
+        assert result["view_count"] == 1000
+        assert result["like_count"] == 50
+
+    def test_none_metrics_default_to_zero(self) -> None:
+        """None metric values should default to 0."""
+        repo = FakeRepository()
+        orchestrator = AnalyticsOrchestrator(
+            repository=repo,
+            preprocessor=FakeTextPreprocessor(),
+            intent_classifier=FakeIntentClassifier(),
+            keyword_extractor=FakeKeywordExtractor(),
+            sentiment_analyzer=FakeSentimentAnalyzer(),
+            impact_calculator=FakeImpactCalculator(),
+        )
+
+        post_data = _make_sample_post_data()
+        post_data["interaction"]["views"] = None
+        post_data["interaction"]["likes"] = None
+
+        result = orchestrator.process_post(post_data)
+
+        assert result["view_count"] == 0
+        assert result["like_count"] == 0
+
+    def test_invalid_metrics_default_to_zero(self) -> None:
+        """Invalid metric values should default to 0."""
+        repo = FakeRepository()
+        orchestrator = AnalyticsOrchestrator(
+            repository=repo,
+            preprocessor=FakeTextPreprocessor(),
+            intent_classifier=FakeIntentClassifier(),
+            keyword_extractor=FakeKeywordExtractor(),
+            sentiment_analyzer=FakeSentimentAnalyzer(),
+            impact_calculator=FakeImpactCalculator(),
+        )
+
+        post_data = _make_sample_post_data()
+        post_data["interaction"]["views"] = "not_a_number"
+        post_data["interaction"]["likes"] = {"invalid": "type"}
+
+        result = orchestrator.process_post(post_data)
+
+        assert result["view_count"] == 0
+        assert result["like_count"] == 0
