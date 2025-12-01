@@ -598,6 +598,39 @@ MINIO_SECRET_KEY="your-secret-key"
 
 The Analytics Engine provides a `/test/analytics` endpoint for testing the full analytics pipeline integration.
 
+### Sentiment & ABSA (Module 4)
+
+The analytics engine uses a Vietnamese sentiment model based on
+`wonrax/phobert-base-vietnamese-sentiment` (3-class: NEG/NEU/POS) and maps
+its outputs into a 1–5★ business rating scale:
+
+- NEGATIVE (index 0) → **1★** (Very Negative)  
+- NEUTRAL (index 2) → **3★** (Neutral)  
+- POSITIVE (index 1) → **5★** (Very Positive)  
+
+On top of this overall sentiment, the `SentimentAnalyzer` implements
+Aspect-Based Sentiment Analysis (ABSA):
+
+- Uses **context windowing** around each keyword (CONFIG: `CONTEXT_WINDOW_SIZE`,
+  default 30 characters) to avoid “sentiment bleeding” between clauses.
+- Cuts windows on punctuation and Vietnamese pivot words (`nhưng`, `tuy nhiên`,
+  `mặc dù`, `bù lại`) so that:
+  - DESIGN praise (e.g. *"Xe thiết kế rất đẹp"*) is evaluated separately.
+  - PRICE complaints (e.g. *"giá quá cao"*) are not diluted by positive parts.
+  - PERFORMANCE issues (e.g. *"pin thì hơi yếu"*) are localized.
+- Returns both:
+  - **overall** sentiment (label, score in [-1,1], rating 1–5★, confidence).
+  - **aspects** dictionary keyed by business aspect (`DESIGN`, `PRICE`,
+    `PERFORMANCE`, `SERVICE`, …) with per-aspect label/score/rating and mentions.
+
+Model files are downloaded from MinIO via:
+
+- `make download-phobert` → runs `scripts/download_phobert_model.py` using:
+  - `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`
+  - Downloads: `model_quantized.onnx`, `config.json`, `vocab.txt`,
+    `special_tokens_map.json`, `tokenizer_config.json`,
+    `added_tokens.json`, `bpe.codes` into `infrastructure/phobert/models/`.
+
 ### Endpoint Details
 
 **URL**: `POST /test/analytics`  

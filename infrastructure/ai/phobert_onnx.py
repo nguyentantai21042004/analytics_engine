@@ -103,6 +103,7 @@ class PhoBERTONNX:
             truncation=True,
             max_length=self.max_length,
             padding="max_length",
+            add_special_tokens=True,  # Critical: Ensure <s> and </s> tokens are added for PhoBERT
         )
         return inputs
 
@@ -134,16 +135,16 @@ class PhoBERTONNX:
         result = {
             "rating": rating,
             "sentiment": sentiment,
+            "label": sentiment,  # Alias for backward compatibility with example code
             "confidence": confidence,
         }
 
         if return_probabilities:
+            # Handle 3-class model output (wonrax model: NEG=0, POS=1, NEU=2)
             result["probabilities"] = {
-                "VERY_NEGATIVE": probs[0][0].item(),
-                "NEGATIVE": probs[0][1].item(),
-                "NEUTRAL": probs[0][2].item(),
-                "POSITIVE": probs[0][3].item(),
-                "VERY_POSITIVE": probs[0][4].item(),
+                "NEGATIVE": probs[0][0].item(),  # Index 0 = NEG
+                "POSITIVE": probs[0][1].item(),  # Index 1 = POS
+                "NEUTRAL": probs[0][2].item(),   # Index 2 = NEU
             }
 
         return result
@@ -167,15 +168,13 @@ class PhoBERTONNX:
             >>> result = model.predict("Sản phẩm chất lượng cao")
             >>> print(result)
             {
-                'rating': 5,
-                'sentiment': 'VERY_POSITIVE',
-                'confidence': 0.95,
+                'rating': 4,
+                'sentiment': 'POSITIVE',
+                'confidence': 0.92,
                 'probabilities': {
-                    'VERY_NEGATIVE': 0.01,
-                    'NEGATIVE': 0.01,
-                    'NEUTRAL': 0.02,
-                    'POSITIVE': 0.01,
-                    'VERY_POSITIVE': 0.95
+                    'NEGATIVE': 0.02,
+                    'NEUTRAL': 0.06,
+                    'POSITIVE': 0.92
                 }
             }
         """

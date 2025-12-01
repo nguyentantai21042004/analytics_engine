@@ -263,6 +263,7 @@ class SentimentAnalyzer:
                 aspect_results[aspect] = {
                     "label": ABSA_LABELS["NEUTRAL"],
                     "score": 0.0,
+                    "rating": 3,  # Neutral rating
                     "confidence": 0.0,
                     "mentions": len(aspect_keywords),
                     "keywords": [kw.get("keyword", "") for kw in aspect_keywords],
@@ -273,28 +274,16 @@ class SentimentAnalyzer:
     def _extract_smart_window(self, text: str, keyword: str, position: Optional[int] = None) -> str:
         """Extract context window around keyword with smart boundary snapping.
 
-        Args:
-            text: Full text
-            keyword: Target keyword
-            position: Optional starting position of keyword in text
-
-        Returns:
-            Extracted context window (expanded to word boundaries)
-
-        Note:
-            - If keyword not found in text, returns full text as fallback
-            - If text is too short for window, returns full text
-            - Handles edge cases like empty keyword or text gracefully
+        This implementation:
+        - Uses a configurable radius around the keyword
+        - Then trims the window to nearby delimiters (punctuation and pivot words like "nhưng")
+        - Finally snaps to word boundaries to avoid cutting inside tokens
         """
         # Edge case: empty or invalid inputs
         if not text or not text.strip():
             return ""
 
         if not keyword or not keyword.strip():
-            return text
-
-        # Edge case: text is shorter than context window, return full text
-        if len(text) <= self.context_window_size:
             return text
 
         # Find keyword position if not provided
@@ -311,39 +300,55 @@ class SentimentAnalyzer:
         if position < 0 or position >= len(text):
             return text
 
-        # Calculate initial window boundaries
-        keyword_len = len(keyword)
-        keyword_mid = position + keyword_len // 2
-        half_window = self.context_window_size // 2
+        radius = self.context_window_size
+        text_len = len(text)
 
-        start = max(0, keyword_mid - half_window)
-        end = min(len(text), keyword_mid + half_window)
+        # Initial coarse window
+        start = max(0, position - radius)
+        end = min(text_len, position + len(keyword) + radius)
 
-        # Smart boundary snapping: expand to nearest whitespace or punctuation
-        # Look backward from start
-        if start > 0:
-            # Find nearest word boundary before start
-            for i in range(start, max(0, start - 20), -1):
-                if text[i] in " \n\t,.:;!?":
-                    start = i + 1
-                    break
-            else:
-                # If no boundary found in 20 chars, use original start
-                pass
+        snippet = text[start:end]
+        kw_start_in_snippet = position - start
+        kw_end_in_snippet = kw_start_in_snippet + len(keyword)
 
-        # Look forward from end
-        if end < len(text):
-            # Find nearest word boundary after end
-            for i in range(end, min(len(text), end + 20)):
-                if text[i] in " \n\t,.:;!?":
-                    end = i
-                    break
-            else:
-                # If no boundary found in 20 chars, use original end
-                pass
+        # Delimiters and pivot words that break clauses / sentiments
+        delimiters = [".", ",", ";", "!", "?", "nhưng", "tuy nhiên", "mặc dù", "bù lại"]
 
-        # Extract and clean context
-        context = text[start:end].strip()
+        # Cut on the left: find nearest delimiter BEFORE the keyword
+        left_part = snippet[:kw_start_in_snippet]
+        best_left_cut = -1
+        for delim in delimiters:
+            idx = left_part.rfind(delim)
+            if idx != -1 and idx > best_left_cut:
+                best_left_cut = idx + len(delim)
+
+        if best_left_cut != -1:
+            start = start + best_left_cut
+
+        # Recompute snippet after left cut
+        snippet = text[start:end]
+        kw_start_in_snippet = position - start
+        kw_end_in_snippet = kw_start_in_snippet + len(keyword)
+
+        # Cut on the right: find nearest delimiter AFTER the keyword
+        right_part = snippet[kw_end_in_snippet:]
+        best_right_cut = None
+        for delim in delimiters:
+            idx = right_part.find(delim)
+            if idx != -1:
+                if best_right_cut is None or idx < best_right_cut:
+                    best_right_cut = idx
+
+        if best_right_cut is not None:
+            end = position + len(keyword) + best_right_cut
+
+        # Snap to word boundaries to avoid cutting inside tokens
+        while start > 0 and start < text_len and text[start] not in " \t\n":
+            start -= 1
+        while end < text_len and text[end] not in " \t\n":
+            end += 1
+
+        context = text[start:end].strip(" \n\t.,;!?")
 
         # Final fallback: if context is empty or too short, return full text
         return context if context and len(context) >= len(keyword) else text
@@ -362,6 +367,7 @@ class SentimentAnalyzer:
             return {
                 "label": ABSA_LABELS["NEUTRAL"],
                 "score": 0.0,
+                "rating": 3,  # Neutral rating
                 "confidence": 0.0,
                 "mentions": 0,
                 "keywords": [],
@@ -373,6 +379,7 @@ class SentimentAnalyzer:
             return {
                 "label": result["label"],
                 "score": result["score"],
+                "rating": result.get("rating", 3),  # Keep rating for backward compatibility
                 "confidence": result["confidence"],
                 "mentions": 1,
                 "keywords": [result["keyword"]],
@@ -401,12 +408,17 @@ class SentimentAnalyzer:
         # Map aggregated score to label
         label = self._map_score_to_label(avg_score)
 
+        # Calculate aggregated rating (average of ratings, rounded)
+        ratings = [r.get("rating", 3) for r in results]
+        avg_rating = round(sum(ratings) / len(ratings)) if ratings else 3
+
         # Use average confidence
         avg_confidence = total_confidence / len(results) if results else 0.0
 
         return {
             "label": label,
             "score": round(avg_score, 3),
+            "rating": avg_rating,  # Keep rating for backward compatibility
             "confidence": round(avg_confidence, 3),
             "mentions": len(results),
             "keywords": keywords,
@@ -438,6 +450,7 @@ class SentimentAnalyzer:
         return {
             "label": label,
             "score": score,
+            "rating": rating,  # Keep rating for backward compatibility with examples
             "confidence": phobert_result.get("confidence", 0.0),
             "probabilities": phobert_result.get("probabilities", {}),
         }

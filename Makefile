@@ -89,7 +89,7 @@ dev-logs:
 # ==============================================================================
 download-phobert:
 	@echo "Downloading PhoBERT ONNX model..."
-	@bash scripts/download_phobert_model.sh
+	@uv run python scripts/download_phobert_model.py
 
 download-spacy-model:
 	@echo "Downloading multilingual SpaCy model (xx_ent_wiki_sm)..."

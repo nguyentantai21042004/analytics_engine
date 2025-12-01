@@ -161,64 +161,77 @@ class TestPostProcessing:
                 phobert = PhoBERTONNX(model_path=str(model_dir))
                 yield phobert
 
-    def test_postprocess_very_negative(self, mock_phobert):
-        """Test post-processing for VERY_NEGATIVE sentiment."""
-        logits = torch.tensor([[5.0, 0.1, 0.1, 0.1, 0.1]])
-        result = mock_phobert._postprocess(logits)
-
-        assert result["rating"] == 1
-        assert result["sentiment"] == "VERY_NEGATIVE"
-        assert result["confidence"] > 0.9
-
     def test_postprocess_negative(self, mock_phobert):
-        """Test post-processing for NEGATIVE sentiment."""
-        logits = torch.tensor([[0.1, 5.0, 0.1, 0.1, 0.1]])
+        """Test post-processing for NEGATIVE sentiment (3-class model, index 0)."""
+        logits = torch.tensor([[5.0, 0.1, 0.1]])  # wonrax model: NEG=0, POS=1, NEU=2
         result = mock_phobert._postprocess(logits)
 
         assert result["rating"] == 2
         assert result["sentiment"] == "NEGATIVE"
         assert result["confidence"] > 0.9
 
-    def test_postprocess_neutral(self, mock_phobert):
-        """Test post-processing for NEUTRAL sentiment."""
-        logits = torch.tensor([[0.1, 0.1, 5.0, 0.1, 0.1]])
-        result = mock_phobert._postprocess(logits)
-
-        assert result["rating"] == 3
-        assert result["sentiment"] == "NEUTRAL"
-        assert result["confidence"] > 0.9
-
     def test_postprocess_positive(self, mock_phobert):
-        """Test post-processing for POSITIVE sentiment."""
-        logits = torch.tensor([[0.1, 0.1, 0.1, 5.0, 0.1]])
+        """Test post-processing for POSITIVE sentiment (3-class model, index 1)."""
+        logits = torch.tensor([[0.1, 5.0, 0.1]])  # wonrax model: NEG=0, POS=1, NEU=2
         result = mock_phobert._postprocess(logits)
 
         assert result["rating"] == 4
         assert result["sentiment"] == "POSITIVE"
         assert result["confidence"] > 0.9
 
-    def test_postprocess_very_positive(self, mock_phobert):
-        """Test post-processing for VERY_POSITIVE sentiment."""
-        logits = torch.tensor([[0.1, 0.1, 0.1, 0.1, 5.0]])
+    def test_postprocess_neutral(self, mock_phobert):
+        """Test post-processing for NEUTRAL sentiment (3-class model, index 2)."""
+        logits = torch.tensor([[0.1, 0.1, 5.0]])  # wonrax model: NEG=0, POS=1, NEU=2
         result = mock_phobert._postprocess(logits)
 
-        assert result["rating"] == 5
-        assert result["sentiment"] == "VERY_POSITIVE"
+        assert result["rating"] == 3
+        assert result["sentiment"] == "NEUTRAL"
         assert result["confidence"] > 0.9
 
+    def test_postprocess_all_label_indices(self, mock_phobert):
+        """Test that all label indices (0, 1, 2) map to correct ratings and labels."""
+        # wonrax model mapping: 0=NEG, 1=POS, 2=NEU
+        test_cases = [
+            (torch.tensor([[10.0, 0.0, 0.0]]), 0, 2, "NEGATIVE"),  # NEG -> 2 stars
+            (torch.tensor([[0.0, 10.0, 0.0]]), 1, 4, "POSITIVE"),  # POS -> 4 stars
+            (torch.tensor([[0.0, 0.0, 10.0]]), 2, 3, "NEUTRAL"),   # NEU -> 3 stars
+        ]
+
+        for logits, expected_idx, expected_rating, expected_label in test_cases:
+            result = mock_phobert._postprocess(logits)
+            assert result["rating"] == expected_rating
+            assert result["sentiment"] == expected_label
+            assert result["confidence"] > 0.99
+
     def test_postprocess_probabilities(self, mock_phobert):
-        """Test post-processing includes probabilities."""
-        logits = torch.tensor([[0.1, 0.1, 0.1, 0.1, 5.0]])
+        """Test post-processing includes probabilities (3-class model)."""
+        logits = torch.tensor([[0.1, 0.1, 5.0]])  # 3-class: NEGATIVE, NEUTRAL, POSITIVE
         result = mock_phobert._postprocess(logits, return_probabilities=True)
 
         assert "probabilities" in result
-        assert len(result["probabilities"]) == 5
-        assert "VERY_POSITIVE" in result["probabilities"]
+        assert len(result["probabilities"]) == 3
+        assert "NEGATIVE" in result["probabilities"]
+        assert "NEUTRAL" in result["probabilities"]
+        assert "POSITIVE" in result["probabilities"]
         assert sum(result["probabilities"].values()) == pytest.approx(1.0, rel=0.01)
 
+    def test_postprocess_probability_sum(self, mock_phobert):
+        """Test that probability distribution sums to ~1.0 for all classes."""
+        test_cases = [
+            torch.tensor([[2.0, 1.0, 0.5]]),
+            torch.tensor([[0.5, 2.0, 1.0]]),
+            torch.tensor([[1.0, 0.5, 2.0]]),
+            torch.tensor([[1.0, 1.0, 1.0]]),  # Uniform
+        ]
+
+        for logits in test_cases:
+            result = mock_phobert._postprocess(logits, return_probabilities=True)
+            prob_sum = sum(result["probabilities"].values())
+            assert prob_sum == pytest.approx(1.0, abs=0.001)
+
     def test_postprocess_without_probabilities(self, mock_phobert):
-        """Test post-processing without probabilities."""
-        logits = torch.tensor([[0.1, 0.1, 0.1, 0.1, 5.0]])
+        """Test post-processing without probabilities (3-class model)."""
+        logits = torch.tensor([[0.1, 0.1, 5.0]])  # 3-class: NEGATIVE, NEUTRAL, POSITIVE
         result = mock_phobert._postprocess(logits, return_probabilities=False)
 
         assert "probabilities" not in result
@@ -264,9 +277,9 @@ class TestPrediction:
                 yield phobert
 
     def test_predict_positive(self, mock_phobert):
-        """Test prediction for positive sentiment."""
+        """Test prediction for positive sentiment (3-class model)."""
         mock_output = Mock()
-        mock_output.logits = torch.tensor([[0.1, 0.1, 0.1, 5.0, 0.1]])
+        mock_output.logits = torch.tensor([[0.1, 5.0, 0.1]])  # wonrax model: NEG=0, POS=1, NEU=2
         mock_phobert.model.return_value = mock_output
 
         result = mock_phobert.predict("Sản phẩm tuyệt vời!")
@@ -276,9 +289,9 @@ class TestPrediction:
         assert result["confidence"] > 0.5
 
     def test_predict_negative(self, mock_phobert):
-        """Test prediction for negative sentiment."""
+        """Test prediction for negative sentiment (3-class model)."""
         mock_output = Mock()
-        mock_output.logits = torch.tensor([[0.1, 5.0, 0.1, 0.1, 0.1]])
+        mock_output.logits = torch.tensor([[5.0, 0.1, 0.1]])  # wonrax model: NEG=0, POS=1, NEU=2
         mock_phobert.model.return_value = mock_output
 
         result = mock_phobert.predict("Sản phẩm tệ!")
@@ -295,21 +308,19 @@ class TestPrediction:
         assert result["confidence"] == 0.0
 
     def test_predict_long_text(self, mock_phobert):
-        """Test prediction with very long text."""
+        """Test prediction with very long text (3-class model)."""
         mock_output = Mock()
-        mock_output.logits = torch.tensor([[0.1, 0.1, 5.0, 0.1, 0.1]])
+        mock_output.logits = torch.tensor([[0.1, 0.1, 5.0]])  # wonrax model: NEG=0, POS=1, NEU=2
         mock_phobert.model.return_value = mock_output
 
         long_text = "Sản phẩm này " * 200  # Very long text
         result = mock_phobert.predict(long_text)
 
-        assert result["rating"] in range(1, 6)
+        assert result["rating"] in [2, 3, 4]  # 3-class maps to ratings 2, 3, 4
         assert result["sentiment"] in [
-            "VERY_NEGATIVE",
             "NEGATIVE",
             "NEUTRAL",
             "POSITIVE",
-            "VERY_POSITIVE",
         ]
 
 
@@ -350,12 +361,13 @@ class TestBatchPrediction:
                 yield phobert
 
     def test_predict_batch(self, mock_phobert):
-        """Test batch prediction."""
+        """Test batch prediction (3-class model)."""
         # Mock different outputs for each call
+        # wonrax model: NEG=0, POS=1, NEU=2
         outputs = [
-            Mock(logits=torch.tensor([[0.1, 0.1, 0.1, 0.1, 5.0]])),  # VERY_POSITIVE
-            Mock(logits=torch.tensor([[5.0, 0.1, 0.1, 0.1, 0.1]])),  # VERY_NEGATIVE
-            Mock(logits=torch.tensor([[0.1, 0.1, 5.0, 0.1, 0.1]])),  # NEUTRAL
+            Mock(logits=torch.tensor([[0.1, 5.0, 0.1]])),  # POS (index 1)
+            Mock(logits=torch.tensor([[5.0, 0.1, 0.1]])),  # NEG (index 0)
+            Mock(logits=torch.tensor([[0.1, 0.1, 5.0]])),  # NEU (index 2)
         ]
         mock_phobert.model.side_effect = outputs
 
@@ -364,9 +376,9 @@ class TestBatchPrediction:
         results = mock_phobert.predict_batch(texts)
 
         assert len(results) == 3
-        assert results[0]["rating"] == 5
-        assert results[1]["rating"] == 1
-        assert results[2]["rating"] == 3
+        assert results[0]["rating"] == 5  # POS -> 5 stars
+        assert results[1]["rating"] == 1  # NEG -> 1 star
+        assert results[2]["rating"] == 3  # NEU -> 3 stars
 
     def test_predict_batch_empty_list(self, mock_phobert):
         """Test batch prediction with empty list."""
@@ -394,7 +406,7 @@ class TestEdgeCases:
                 PhoBERTONNX(model_path=str(model_dir))
 
     def test_predict_special_characters(self):
-        """Test prediction with special characters."""
+        """Test prediction with special characters (3-class model)."""
         with (
             patch("infrastructure.ai.phobert_onnx.AutoTokenizer") as mock_tokenizer,
             patch(
@@ -411,7 +423,9 @@ class TestEdgeCases:
 
             model_instance = Mock()
             mock_output = Mock()
-            mock_output.logits = torch.tensor([[0.1, 0.1, 0.1, 5.0, 0.1]])
+            mock_output.logits = torch.tensor(
+                [[0.1, 5.0, 0.1]]
+            )  # wonrax model: NEG=0, POS=1, NEU=2
             model_instance.return_value = mock_output
             mock_model_class.from_pretrained.return_value = model_instance
 
@@ -429,4 +443,4 @@ class TestEdgeCases:
 
                 result = phobert.predict("Xe đẹp!!! 😊 @#$%")
 
-                assert result["rating"] in range(1, 6)
+                assert result["rating"] in [1, 3, 5]  # 3-class maps to ratings 1, 3, 5

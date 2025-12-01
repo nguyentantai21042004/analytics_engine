@@ -22,12 +22,14 @@ REQUIRED_MODEL_FILES = [
 ]
 
 # Sentiment Mapping: model output index -> rating (1-5 stars)
+# Updated for 3-class sentiment model based on wonrax/phobert-base-vietnamese-sentiment
+# Model mapping: 0=NEG, 1=POS, 2=NEU (from config.json id2label)
+# Maps 3 classes to 5-star rating scale for backward compatibility, using
+# more "extreme" endpoints so that NEG and POS are clearly separated.
 SENTIMENT_MAP = {
-    0: 1,  # Very Negative (1 star)
-    1: 2,  # Negative (2 stars)
-    2: 3,  # Neutral (3 stars)
-    3: 4,  # Positive (4 stars)
-    4: 5,  # Very Positive (5 stars)
+    0: 1,  # NEG (index 0) -> 1 star (Very Negative)
+    1: 5,  # POS (index 1) -> 5 stars (Very Positive)
+    2: 3,  # NEU (index 2) -> 3 stars (Neutral)
 }
 
 # Sentiment Labels
@@ -43,16 +45,15 @@ SENTIMENT_LABELS = {
 DEFAULT_NEUTRAL_RESPONSE = {
     "rating": 3,
     "sentiment": "NEUTRAL",
+    "label": "NEUTRAL",  # Alias for backward compatibility
     "confidence": 0.0,
 }
 
-# Default Probability Distribution (uniform)
+# Default Probability Distribution (uniform) for 3-class model
 DEFAULT_PROBABILITIES = {
-    "VERY_NEGATIVE": 0.2,
-    "NEGATIVE": 0.2,
-    "NEUTRAL": 0.2,
-    "POSITIVE": 0.2,
-    "VERY_POSITIVE": 0.2,
+    "NEGATIVE": 0.333,
+    "NEUTRAL": 0.334,
+    "POSITIVE": 0.333,
 }
 
 # Error Messages
@@ -100,7 +101,9 @@ ERROR_ASPECT_DICTIONARY_NOT_FOUND = "Aspect dictionary file not found: {path}"
 # ============================================================================
 
 # Context Windowing
-DEFAULT_CONTEXT_WINDOW_SIZE = int(os.getenv("CONTEXT_WINDOW_SIZE", "60"))
+# Tighter default window keeps sentiment focused around each keyword and reduces
+# "sentiment bleeding" between clauses. Can be overridden via CONTEXT_WINDOW_SIZE.
+DEFAULT_CONTEXT_WINDOW_SIZE = int(os.getenv("CONTEXT_WINDOW_SIZE", "30"))
 
 # Sentiment Thresholds (for 3-class mapping)
 THRESHOLD_POSITIVE = float(os.getenv("THRESHOLD_POSITIVE", "0.25"))
