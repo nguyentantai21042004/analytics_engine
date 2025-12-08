@@ -6,8 +6,6 @@ Loads config, initializes AI models and RabbitMQ, starts the consumer service.
 import asyncio
 from typing import Optional
 
-from prometheus_client import start_http_server
-
 from core.config import settings
 from core.logger import logger
 from infrastructure.ai import PhoBERTONNX, SpacyYakeExtractor
@@ -29,11 +27,6 @@ async def main():
         logger.info(
             f"========== Starting {settings.service_name} v{settings.service_version} Consumer service =========="
         )
-
-        # Start Prometheus metrics server
-        if settings.metrics_enabled:
-            start_http_server(settings.metrics_port)
-            logger.info(f"Prometheus metrics server started on port {settings.metrics_port}")
 
         # 1. Initialize AI models
         logger.info("Loading AI models...")

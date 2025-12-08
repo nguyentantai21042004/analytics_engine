@@ -195,14 +195,6 @@ def create_message_handler(
                 platform,
                 event_metadata.get("job_id"),
             )
-            # Track batch size mismatch in Prometheus metrics
-            from internal.consumers.metrics import batch_size_mismatch_total
-
-            batch_size_mismatch_total.labels(
-                platform=platform,
-                expected_size=str(expected_size),
-                actual_size=str(len(batch_items)),
-            ).inc()
 
         # Extract project_id from job_id
         job_id = event_metadata.get("job_id", "")

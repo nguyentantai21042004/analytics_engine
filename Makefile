@@ -268,3 +268,36 @@ format:
 
 lint:
 	uv run flake8 core/ infrastructure/ command/ internal/ tests/ --max-line-length=100
+
+# ==============================================================================
+# DOCKER
+# ==============================================================================
+docker-build:
+	docker build -f command/consumer/Dockerfile -t smap-analytics-consumer:latest .
+
+docker-build-push:
+	./scripts/build-consumer.sh build-push
+
+docker-login:
+	./scripts/build-consumer.sh login
+
+docker-run:
+	docker-compose up -d
+
+docker-stop:
+	docker-compose down
+
+# ==============================================================================
+# KUBERNETES
+# ==============================================================================
+k8s-deploy:
+	kubectl apply -f k8s/
+
+k8s-delete:
+	kubectl delete -f k8s/
+
+k8s-logs:
+	kubectl logs -n smap -l app=smap-analytics -f
+
+k8s-status:
+	kubectl get all -n smap

@@ -114,10 +114,6 @@ class Settings(BaseSettings):
     error_backoff_base_seconds: float = 1.0
     error_backoff_max_seconds: float = 60.0
 
-    # Metrics Settings
-    metrics_enabled: bool = True
-    metrics_port: int = 9090
-
     # Database Pool Settings (for batch processing)
     database_pool_size: int = 20
     database_max_overflow: int = 10
