@@ -15,9 +15,12 @@ spec:
       labels:
         app: smap-analytics
     spec:
+      imagePullSecrets:
+        - name: harbor-secret
+
       containers:
         - name: consumer
-          image: smap-analytics-consumer:latest
+          image: registry.tantai.dev/smap/smap-analytics-consumer:251209-064254
           imagePullPolicy: IfNotPresent
 
           envFrom:
@@ -25,6 +28,33 @@ spec:
                 name: smap-analytics-config
             - secretRef:
                 name: smap-analytics-secret
+
+          ports:
+            - name: metrics
+              containerPort: 9090
+              protocol: TCP
+
+          livenessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - "import sys; sys.exit(0)"
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+
+          readinessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - "import sys; sys.exit(0)"
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
 
           resources:
             requests:
