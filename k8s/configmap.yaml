@@ -12,6 +12,9 @@ data:
   LOG_LEVEL: "INFO"
   DEBUG: "false"
 
+  # Python Configuration
+  PYTHONWARNINGS: "ignore::SyntaxWarning"
+
   # PhoBERT Model Configuration
   PHOBERT_MODEL_PATH: "infrastructure/phobert/models"
   PHOBERT_MAX_LENGTH: "128"
