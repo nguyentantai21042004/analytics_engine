@@ -124,6 +124,11 @@ class Settings(BaseSettings):
     publish_routing_key: str = "analyze.result"
     publish_enabled: bool = True  # Feature flag for gradual rollout
 
+    # Debug Monitoring Settings
+    # Set to "true" for full debug logging, "sample" for 1-in-100 sampling
+    debug_raw_data: str = "false"
+    debug_sample_rate: int = 100  # Log 1 in N items when debug_raw_data="sample"
+
 
 settings = Settings()
 

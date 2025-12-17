@@ -48,6 +48,13 @@ from repository.analytics_repository import AnalyticsRepository, AnalyticsReposi
 from repository.crawl_error_repository import CrawlErrorRepository
 from services.analytics.orchestrator import AnalyticsOrchestrator
 from utils.project_id_extractor import extract_project_id
+from utils.debug_logging import (
+    log_raw_event_payload,
+    log_extracted_item_data,
+    log_analytics_payload_before_save,
+    log_data_quality_metrics,
+)
+from utils.id_utils import detect_truncated_id
 
 
 def parse_minio_path(minio_path: str) -> tuple[str, str]:
@@ -111,7 +118,8 @@ def parse_event_metadata(envelope: dict[str, Any]) -> dict[str, Any]:
     """
     payload = envelope.get("payload", {})
 
-    return {
+    # Extract metadata with fallback paths
+    metadata = {
         "event_id": envelope.get("event_id"),
         "event_type": envelope.get("event_type"),
         "timestamp": envelope.get("timestamp"),
@@ -124,6 +132,38 @@ def parse_event_metadata(envelope: dict[str, Any]) -> dict[str, Any]:
         "task_type": payload.get("task_type"),
         "keyword": payload.get("keyword"),
     }
+
+    # Log extracted metadata for debugging
+    logger.debug(
+        "Extracted event metadata: event_id=%s, job_id=%s, batch_index=%s, "
+        "task_type=%s, keyword=%s, platform=%s",
+        metadata.get("event_id"),
+        metadata.get("job_id"),
+        metadata.get("batch_index"),
+        metadata.get("task_type"),
+        metadata.get("keyword"),
+        metadata.get("platform"),
+    )
+
+    # Log warnings for missing critical fields
+    missing_fields = []
+    if not metadata.get("job_id"):
+        missing_fields.append("job_id")
+    if metadata.get("batch_index") is None:
+        missing_fields.append("batch_index")
+    if not metadata.get("task_type"):
+        missing_fields.append("task_type")
+    if not metadata.get("keyword"):
+        missing_fields.append("keyword")
+
+    if missing_fields:
+        logger.warning(
+            "Missing metadata fields in event payload: %s (event_id=%s)",
+            missing_fields,
+            metadata.get("event_id"),
+        )
+
+    return metadata
 
 
 def _create_session_factory() -> sessionmaker:
@@ -209,10 +249,31 @@ def create_message_handler(
     Returns:
         Async callable that processes incoming messages
     """
+    # Import SentimentAnalyzer here to avoid circular imports
+    from services.analytics.sentiment import SentimentAnalyzer
 
     minio_adapter = MinioAdapter()
     session_factory = _create_session_factory()
     publish_enabled = settings.publish_enabled and publisher is not None
+
+    # Create SentimentAnalyzer if PhoBERT is available
+    sentiment_analyzer: Optional[SentimentAnalyzer] = None
+    if phobert is not None:
+        try:
+            sentiment_analyzer = SentimentAnalyzer(phobert_model=phobert)
+            logger.info("SentimentAnalyzer initialized successfully with PhoBERT model")
+        except Exception as exc:
+            logger.error(
+                "Failed to initialize SentimentAnalyzer: %s. "
+                "Sentiment analysis will be disabled.",
+                exc,
+            )
+            sentiment_analyzer = None
+    else:
+        logger.warning(
+            "PhoBERT model not available. SentimentAnalyzer will be disabled. "
+            "All posts will receive neutral sentiment scores."
+        )
 
     if publish_enabled:
         logger.info("Result publishing enabled (exchange=%s)", settings.publish_exchange)
@@ -301,7 +362,7 @@ def create_message_handler(
                     project_id=project_id,
                     analytics_repo=analytics_repo,
                     error_repo=error_repo,
-                    phobert=phobert,
+                    sentiment_analyzer=sentiment_analyzer,
                 )
 
                 processed_results.append(result)
@@ -335,6 +396,28 @@ def create_message_handler(
             job_id,
             success_count,
             error_count,
+        )
+
+        # Calculate and log data quality metrics
+        items_with_full_metadata = sum(
+            1
+            for r in processed_results
+            if r.get("status") == "success" and r.get("has_full_metadata", False)
+        )
+        items_with_sentiment = sum(
+            1
+            for r in processed_results
+            if r.get("status") == "success" and r.get("has_sentiment", False)
+        )
+        truncated_ids = sum(
+            1 for r in processed_results if detect_truncated_id(str(r.get("content_id", "")))[0]
+        )
+        log_data_quality_metrics(
+            total_items=len(batch_items),
+            items_with_full_metadata=items_with_full_metadata,
+            items_with_sentiment=items_with_sentiment,
+            truncated_ids=truncated_ids,
+            job_id=job_id,
         )
 
         # Publish result to Collector if enabled
@@ -450,6 +533,9 @@ def create_message_handler(
 
                 event_id = envelope.get("event_id", "unknown")
 
+                # Debug: Log raw event payload
+                log_raw_event_payload(envelope, event_id)
+
                 with _db_session(session_factory) as db:
                     result = await process_event_format(envelope, db)
                     logger.info(
@@ -481,7 +567,7 @@ def process_single_item(
     project_id: Optional[str],
     analytics_repo: AnalyticsRepository,
     error_repo: CrawlErrorRepository,
-    phobert: Optional[PhoBERTONNX],
+    sentiment_analyzer: Optional[Any] = None,
 ) -> dict[str, Any]:
     """Process a single item from a batch.
 
@@ -491,7 +577,7 @@ def process_single_item(
         project_id: Extracted project ID
         analytics_repo: Analytics repository instance
         error_repo: Error repository instance
-        phobert: PhoBERT model instance
+        sentiment_analyzer: SentimentAnalyzer instance (optional)
 
     Returns:
         Processing result with status
@@ -539,18 +625,37 @@ def process_single_item(
     try:
         orchestrator = AnalyticsOrchestrator(
             repository=analytics_repo,
-            sentiment_analyzer=None,
+            sentiment_analyzer=sentiment_analyzer,
         )
 
         # Enrich item with batch context
         enriched_item = enrich_with_batch_context(item, event_metadata, project_id)
 
+        # Debug: Log extracted item data
+        log_extracted_item_data(enriched_item, content_id, platform)
+
         result = orchestrator.process_post(enriched_item)
+
+        # Debug: Log analytics payload before save
+        log_analytics_payload_before_save(result, content_id)
+
+        # Check if item has full metadata
+        has_full_metadata = all(
+            result.get(field) is not None
+            for field in ["job_id", "batch_index", "task_type", "keyword_source"]
+        )
+
+        # Check if item has actual sentiment (not neutral default)
+        has_sentiment = (
+            result.get("overall_sentiment") != "NEUTRAL" or result.get("overall_confidence", 0) > 0
+        )
 
         return {
             "status": "success",
             "content_id": content_id,
             "impact_score": result.get("impact_score", 0.0),
+            "has_full_metadata": has_full_metadata,
+            "has_sentiment": has_sentiment,
         }
 
     except Exception as exc:
@@ -582,12 +687,19 @@ def enrich_with_batch_context(
 
     # Add batch context to meta
     meta = enriched.get("meta", {}).copy()
+    content_id = meta.get("id", "unknown")
+
+    # Extract and set batch context fields
     meta["job_id"] = event_metadata.get("job_id")
     meta["batch_index"] = event_metadata.get("batch_index")
     meta["task_type"] = event_metadata.get("task_type")
     meta["keyword_source"] = event_metadata.get("keyword")
-    meta["pipeline_version"] = f"crawler_{meta.get('platform', 'unknown').lower()}_v3"
 
+    # Set pipeline version
+    platform = meta.get("platform", event_metadata.get("platform", "unknown"))
+    meta["pipeline_version"] = f"crawler_{str(platform).lower()}_v3"
+
+    # Set project_id
     if project_id:
         meta["project_id"] = project_id
 
@@ -597,7 +709,26 @@ def enrich_with_batch_context(
         try:
             meta["crawled_at"] = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
         except (ValueError, AttributeError):
-            pass
+            logger.warning(
+                "Failed to parse crawled_at timestamp: %s (content_id=%s)",
+                timestamp,
+                content_id,
+            )
+            meta["crawled_at"] = None
+    else:
+        meta["crawled_at"] = None
+
+    # Log enriched metadata for debugging
+    logger.debug(
+        "Enriched item metadata: content_id=%s, job_id=%s, batch_index=%s, "
+        "task_type=%s, keyword_source=%s, pipeline_version=%s",
+        content_id,
+        meta.get("job_id"),
+        meta.get("batch_index"),
+        meta.get("task_type"),
+        meta.get("keyword_source"),
+        meta.get("pipeline_version"),
+    )
 
     enriched["meta"] = meta
     return enriched

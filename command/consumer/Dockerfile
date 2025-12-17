@@ -4,7 +4,7 @@
 # ==============================================================================
 
 # ==============================================================================
-# Stage 1: Builder - Install dependencies
+# Stage 1: Builder - Install dependencies and download models
 # ==============================================================================
 FROM python:3.12-slim AS builder
 
@@ -25,6 +25,9 @@ COPY pyproject.toml uv.lock ./
 # Install dependencies
 RUN uv pip install --system --no-cache -r pyproject.toml
 
+# Download SpaCy multilingual model (cached in builder layer)
+RUN python -m spacy download xx_ent_wiki_sm
+
 # ==============================================================================
 # Stage 2: Runtime
 # ==============================================================================
@@ -37,7 +40,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy Python packages from builder
+# Copy Python packages from builder (includes SpaCy model)
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 

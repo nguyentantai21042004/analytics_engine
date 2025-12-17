@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from core.logger import logger
 from models.database import PostAnalytics
 from utils.uuid_utils import extract_uuid, is_valid_uuid
+from utils.json_encoder import sanitize_analytics_data
 
 
 class AnalyticsRepositoryError(Exception):
@@ -81,6 +82,9 @@ class AnalyticsRepository:
             AnalyticsRepositoryError: If database operation fails.
             ValueError: If analytics_data is missing required 'id' field.
         """
+        # Sanitize data: fix NULL strings, boolean strings, ensure ID is string
+        analytics_data = sanitize_analytics_data(analytics_data)
+
         post_id = analytics_data.get("id")
         if not post_id:
             raise ValueError("analytics_data must contain 'id' field")
@@ -184,6 +188,9 @@ class AnalyticsRepository:
         try:
             saved_records = []
             for analytics_data in analytics_records:
+                # Sanitize data: fix NULL strings, boolean strings, ensure ID is string
+                analytics_data = sanitize_analytics_data(analytics_data)
+
                 post_id = analytics_data.get("id")
                 if not post_id:
                     logger.warning("Skipping record without 'id' field")

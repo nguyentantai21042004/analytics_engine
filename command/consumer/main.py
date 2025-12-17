@@ -33,14 +33,41 @@ async def main():
         # 1. Initialize AI models
         logger.info("Loading AI models...")
 
+        # Track model initialization status for health check
+        phobert_status = {"enabled": False, "error": None}
+        spacyyake_status = {"enabled": False, "error": None}
+
         try:
             # Initialize PhoBERT
             logger.info("Initializing PhoBERT ONNX model...")
+            logger.info("PhoBERT model path: %s", settings.phobert_model_path)
             phobert = PhoBERTONNX(
                 model_path=settings.phobert_model_path, max_length=settings.phobert_max_length
             )
-            logger.info("PhoBERT ONNX model loaded successfully")
+            phobert_status["enabled"] = True
+            logger.info("PhoBERT ONNX model loaded successfully. " "Sentiment analysis is ENABLED.")
 
+        except FileNotFoundError as e:
+            phobert_status["error"] = str(e)
+            logger.error(
+                "PhoBERT model files not found: %s. "
+                "Sentiment analysis will be DISABLED. "
+                "Please ensure model files exist at: %s",
+                e,
+                settings.phobert_model_path,
+            )
+            phobert = None
+
+        except Exception as e:
+            phobert_status["error"] = str(e)
+            logger.error(
+                "Failed to initialize PhoBERT model: %s. " "Sentiment analysis will be DISABLED.",
+                e,
+            )
+            logger.exception("PhoBERT initialization error details:")
+            phobert = None
+
+        try:
             # Initialize SpaCy-YAKE
             logger.info("Initializing SpaCy-YAKE extractor...")
             spacyyake = SpacyYakeExtractor(
@@ -53,14 +80,34 @@ async def main():
                 entity_weight=settings.entity_weight,
                 chunk_weight=settings.chunk_weight,
             )
+            spacyyake_status["enabled"] = True
             logger.info("SpaCy-YAKE extractor loaded successfully")
 
-            logger.info("All AI models loaded successfully")
-
         except Exception as e:
-            logger.error(f"Failed to initialize AI models: {e}")
-            logger.exception("Model initialization error details:")
-            logger.warning("Consumer will start without AI models")
+            spacyyake_status["error"] = str(e)
+            logger.error(f"Failed to initialize SpaCy-YAKE: {e}")
+            logger.exception("SpaCy-YAKE initialization error details:")
+            spacyyake = None
+
+        # Log AI model health summary
+        logger.info("=" * 50)
+        logger.info("AI Model Health Check Summary:")
+        logger.info(
+            "  - PhoBERT (Sentiment): %s",
+            "ENABLED" if phobert_status["enabled"] else f"DISABLED ({phobert_status['error']})",
+        )
+        logger.info(
+            "  - SpaCy-YAKE (Keywords): %s",
+            "ENABLED" if spacyyake_status["enabled"] else f"DISABLED ({spacyyake_status['error']})",
+        )
+        logger.info("=" * 50)
+
+        if not phobert_status["enabled"]:
+            logger.warning(
+                "WARNING: Sentiment analysis is disabled! "
+                "All posts will receive neutral sentiment scores (NEUTRAL, score=0.0). "
+                "This significantly reduces analytics value."
+            )
 
         # 2. Initialize RabbitMQ client
         logger.info("Initializing RabbitMQ client...")

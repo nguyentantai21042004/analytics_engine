@@ -291,7 +291,10 @@ class AnalyticsOrchestrator:
         # Extract intent info from dict or dataclass
         intent_name, intent_confidence = self._extract_intent_info(intent_result)
 
-        return {
+        # Extract crawler metadata from enriched meta
+        crawler_metadata = self._extract_crawler_metadata(meta)
+
+        result = {
             # Identifiers & metadata
             "id": meta.get("id"),
             "project_id": meta.get("project_id"),
@@ -327,6 +330,11 @@ class AnalyticsOrchestrator:
             "model_version": self.MODEL_VERSION,
         }
 
+        # Add crawler metadata
+        result.update(crawler_metadata)
+
+        return result
+
     def _extract_intent_info(self, intent_result: Any) -> tuple[str, float]:
         """Extract intent name and confidence from dict or IntentResult.
 
@@ -354,6 +362,53 @@ class AnalyticsOrchestrator:
         if not platform:
             return "UNKNOWN"
         return str(platform).strip().upper()
+
+    @staticmethod
+    def _extract_crawler_metadata(meta: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract crawler metadata fields from enriched meta.
+
+        These fields are added by enrich_with_batch_context() in the consumer
+        and need to be passed through to the final analytics payload.
+
+        Args:
+            meta: Post metadata dictionary (may contain crawler fields)
+
+        Returns:
+            Dictionary with crawler metadata fields (only non-None values)
+        """
+        crawler_fields = [
+            "job_id",
+            "batch_index",
+            "task_type",
+            "keyword_source",
+            "crawled_at",
+            "pipeline_version",
+        ]
+
+        result = {}
+        missing_fields = []
+
+        for field in crawler_fields:
+            value = meta.get(field)
+            if value is not None:
+                result[field] = value
+            else:
+                missing_fields.append(field)
+
+        # Log debug info about extracted metadata
+        if result:
+            logger.debug(
+                "Extracted crawler metadata: %s",
+                {k: v for k, v in result.items() if k != "crawled_at"},
+            )
+
+        if missing_fields:
+            logger.debug(
+                "Missing crawler metadata fields (will be NULL): %s",
+                missing_fields,
+            )
+
+        return result
 
     @staticmethod
     def _safe_int(value: Any, default: int = 0) -> int:
@@ -391,7 +446,10 @@ class AnalyticsOrchestrator:
         # Extract intent info from dict or dataclass
         intent_name, intent_confidence = self._extract_intent_info(intent_result)
 
-        return {
+        # Extract crawler metadata from enriched meta
+        crawler_metadata = self._extract_crawler_metadata(meta)
+
+        result = {
             # Identifiers & metadata
             "id": meta.get("id"),
             "project_id": meta.get("project_id"),
@@ -426,3 +484,8 @@ class AnalyticsOrchestrator:
             "processing_time_ms": processing_time_ms,
             "model_version": self.MODEL_VERSION,
         }
+
+        # Add crawler metadata
+        result.update(crawler_metadata)
+
+        return result

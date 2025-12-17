@@ -86,8 +86,7 @@ infrastructure/phobert/models/*
 *.db
 *.sqlite
 
-# Scripts (not needed in container)
-scripts/
+# Makefile (not needed in container)
 Makefile
 
 # Benchmarks

@@ -13,6 +13,7 @@ from core.logger import logger
 from core.constants import categorize_error, ErrorCategory
 from repository.analytics_repository import AnalyticsRepository
 from repository.crawl_error_repository import CrawlErrorRepository
+from utils.id_utils import ensure_string_id, log_id_warnings, validate_post_id
 
 
 class ItemProcessingResult:
@@ -26,7 +27,8 @@ class ItemProcessingResult:
         error_message: Optional[str] = None,
         impact_score: Optional[float] = None,
     ):
-        self.content_id = content_id
+        # Ensure content_id is string to prevent BigInt precision loss
+        self.content_id = ensure_string_id(content_id) if content_id else content_id
         self.status = status  # "success" or "error"
         self.error_code = error_code
         self.error_message = error_message
@@ -140,6 +142,18 @@ def enrich_item_with_context(
     enriched = item.copy()
     meta = enriched.get("meta", {}).copy()
 
+    # Ensure ID is string to prevent BigInt precision loss
+    if "id" in meta:
+        original_id = meta["id"]
+        meta["id"] = ensure_string_id(original_id)
+        platform = meta.get("platform", event_metadata.get("platform", "unknown"))
+        # Log warnings for potential ID issues
+        log_id_warnings(meta["id"], platform)
+        # Validate ID format
+        is_valid, error_msg = validate_post_id(meta["id"], platform)
+        if not is_valid:
+            logger.warning("Invalid post ID format: %s", error_msg)
+
     # Add batch context
     meta["job_id"] = event_metadata.get("job_id")
     meta["batch_index"] = event_metadata.get("batch_index")
@@ -184,7 +198,8 @@ def save_error_record(
         ItemProcessingResult with error status
     """
     meta = item.get("meta") or {}
-    content_id = meta.get("id", "unknown")
+    # Ensure content_id is string to prevent BigInt precision loss
+    content_id = ensure_string_id(meta.get("id")) or "unknown"
     platform = meta.get("platform", event_metadata.get("platform", "unknown"))
 
     error_info = extract_error_info(item)
