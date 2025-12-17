@@ -152,7 +152,7 @@ def enrich_item_with_context(
         # Validate ID format
         is_valid, error_msg = validate_post_id(meta["id"], platform)
         if not is_valid:
-            logger.warning("Invalid post ID format: %s", error_msg)
+            logger.warning(f"Invalid post ID format: {error_msg}")
 
     # Add batch context
     meta["job_id"] = event_metadata.get("job_id")
@@ -218,12 +218,10 @@ def save_error_record(
     try:
         error_repo.save(error_data)
         logger.debug(
-            "Saved error record: content_id=%s, error_code=%s",
-            content_id,
-            error_info["error_code"],
+            f"Saved error record: content_id={content_id}, error_code={error_info['error_code']}"
         )
     except Exception as exc:
-        logger.error("Failed to save error record for %s: %s", content_id, exc)
+        logger.error(f"Failed to save error record for {content_id}: {exc}")
 
     return ItemProcessingResult(
         content_id=content_id,
@@ -246,17 +244,9 @@ def log_batch_completion(
         stats: Batch processing statistics
     """
     logger.info(
-        "Batch completed: event_id=%s, job_id=%s, " "success=%d, errors=%d, success_rate=%.1f%%",
-        event_id,
-        job_id,
-        stats.success_count,
-        stats.error_count,
-        stats.success_rate,
+        f"Batch completed: event_id={event_id}, job_id={job_id}, "
+        f"success={stats.success_count}, errors={stats.error_count}, success_rate={stats.success_rate:.1f}%"
     )
 
     if stats.error_distribution:
-        logger.info(
-            "Error distribution for job_id=%s: %s",
-            job_id,
-            stats.error_distribution,
-        )
+        logger.info(f"Error distribution for job_id={job_id}: {stats.error_distribution}")

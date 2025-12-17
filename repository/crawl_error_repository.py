@@ -83,10 +83,8 @@ class CrawlErrorRepository:
             self.db.refresh(error_record)
 
             logger.debug(
-                "Created CrawlError record: id=%s, content_id=%s, error_code=%s",
-                error_record.id,
-                error_record.content_id,
-                error_record.error_code,
+                f"Created CrawlError record: id={error_record.id}, content_id={error_record.content_id}, "
+                f"error_code={error_record.error_code}"
             )
 
             return error_record
@@ -94,9 +92,7 @@ class CrawlErrorRepository:
         except SQLAlchemyError as exc:
             self.db.rollback()
             logger.error(
-                "Database error saving crawl error for content_id=%s: %s",
-                error_data.get("content_id"),
-                exc,
+                f"Database error saving crawl error for content_id={error_data.get('content_id')}: {exc}"
             )
             raise CrawlErrorRepositoryError(f"Failed to save crawl error: {exc}") from exc
 
@@ -140,12 +136,12 @@ class CrawlErrorRepository:
             for record in saved_records:
                 self.db.refresh(record)
 
-            logger.debug("Saved %d crawl error records in batch", len(saved_records))
+            logger.debug(f"Saved {len(saved_records)} crawl error records in batch")
             return saved_records
 
         except SQLAlchemyError as exc:
             self.db.rollback()
-            logger.error("Database error saving batch of crawl errors: %s", exc)
+            logger.error(f"Database error saving batch of crawl errors: {exc}")
             raise CrawlErrorRepositoryError(f"Failed to save crawl errors batch: {exc}") from exc
 
     def get_by_id(self, error_id: int) -> Optional[CrawlError]:
@@ -279,5 +275,5 @@ class CrawlErrorRepository:
             return result
         except SQLAlchemyError as exc:
             self.db.rollback()
-            logger.error("Database error deleting errors for job_id=%s: %s", job_id, exc)
+            logger.error(f"Database error deleting errors for job_id={job_id}: {exc}")
             raise CrawlErrorRepositoryError(f"Failed to delete crawl errors: {exc}") from exc

@@ -135,14 +135,9 @@ def parse_event_metadata(envelope: dict[str, Any]) -> dict[str, Any]:
 
     # Log extracted metadata for debugging
     logger.debug(
-        "Extracted event metadata: event_id=%s, job_id=%s, batch_index=%s, "
-        "task_type=%s, keyword=%s, platform=%s",
-        metadata.get("event_id"),
-        metadata.get("job_id"),
-        metadata.get("batch_index"),
-        metadata.get("task_type"),
-        metadata.get("keyword"),
-        metadata.get("platform"),
+        f"Extracted event metadata: event_id={metadata.get('event_id')}, job_id={metadata.get('job_id')}, "
+        f"batch_index={metadata.get('batch_index')}, task_type={metadata.get('task_type')}, "
+        f"keyword={metadata.get('keyword')}, platform={metadata.get('platform')}"
     )
 
     # Log warnings for missing critical fields
@@ -158,9 +153,7 @@ def parse_event_metadata(envelope: dict[str, Any]) -> dict[str, Any]:
 
     if missing_fields:
         logger.warning(
-            "Missing metadata fields in event payload: %s (event_id=%s)",
-            missing_fields,
-            metadata.get("event_id"),
+            f"Missing metadata fields in event payload: {missing_fields} (event_id={metadata.get('event_id')})"
         )
 
     return metadata
@@ -264,9 +257,8 @@ def create_message_handler(
             logger.info("SentimentAnalyzer initialized successfully with PhoBERT model")
         except Exception as exc:
             logger.error(
-                "Failed to initialize SentimentAnalyzer: %s. "
-                "Sentiment analysis will be disabled.",
-                exc,
+                f"Failed to initialize SentimentAnalyzer: {exc}. "
+                "Sentiment analysis will be disabled."
             )
             sentiment_analyzer = None
     else:
@@ -276,7 +268,7 @@ def create_message_handler(
         )
 
     if publish_enabled:
-        logger.info("Result publishing enabled (exchange=%s)", settings.publish_exchange)
+        logger.info(f"Result publishing enabled (exchange={settings.publish_exchange})")
     else:
         logger.info("Result publishing disabled")
 
@@ -298,10 +290,7 @@ def create_message_handler(
         expected_item_count = event_metadata.get("content_count", 0)
 
         logger.info(
-            "Processing event: event_id=%s, job_id=%s, batch_index=%s",
-            event_id,
-            job_id,
-            event_metadata.get("batch_index"),
+            f"Processing event: event_id={event_id}, job_id={job_id}, batch_index={event_metadata.get('batch_index')}"
         )
 
         if not minio_path:
@@ -309,14 +298,14 @@ def create_message_handler(
 
         # Parse MinIO path
         bucket, object_path = parse_minio_path(minio_path)
-        logger.debug("Fetching batch from MinIO: %s/%s", bucket, object_path)
+        logger.debug(f"Fetching batch from MinIO: {bucket}/{object_path}")
 
         # Fetch batch data from MinIO
         try:
             batch_items = minio_adapter.download_batch(bucket, object_path)
         except (MinioAdapterError, MinioObjectNotFoundError, MinioDecompressionError) as exc:
             # MinIO fetch failed - publish error result if enabled
-            logger.error("MinIO fetch failed for event_id=%s: %s", event_id, exc)
+            logger.error(f"MinIO fetch failed for event_id={event_id}: {exc}")
 
             if publish_enabled and publisher:
                 await _publish_error_result(
@@ -338,11 +327,8 @@ def create_message_handler(
         )
         if len(batch_items) != expected_size:
             logger.warning(
-                "Unexpected batch size: expected=%d, actual=%d, platform=%s, job_id=%s",
-                expected_size,
-                len(batch_items),
-                platform,
-                job_id,
+                f"Unexpected batch size: expected={expected_size}, actual={len(batch_items)}, "
+                f"platform={platform}, job_id={job_id}"
             )
 
         # Process batch items
@@ -375,11 +361,7 @@ def create_message_handler(
                     error_distribution[error_code] = error_distribution.get(error_code, 0) + 1
 
             except Exception as exc:
-                logger.error(
-                    "Error processing item in batch: event_id=%s, error=%s",
-                    event_id,
-                    exc,
-                )
+                logger.error(f"Error processing item in batch: event_id={event_id}, error={exc}")
                 error_count += 1
                 processed_results.append(
                     {
@@ -391,11 +373,7 @@ def create_message_handler(
                 )
 
         logger.info(
-            "Batch completed: event_id=%s, job_id=%s, success=%d, errors=%d",
-            event_id,
-            job_id,
-            success_count,
-            error_count,
+            f"Batch completed: event_id={event_id}, job_id={job_id}, success={success_count}, errors={error_count}"
         )
 
         # Calculate and log data quality metrics
@@ -479,7 +457,7 @@ def create_message_handler(
 
         except RabbitMQPublisherError as exc:
             # Log error but don't fail the batch processing
-            logger.error("Failed to publish batch result: %s", exc)
+            logger.error(f"Failed to publish batch result: {exc}")
 
     async def _publish_error_result(
         publisher: RabbitMQPublisher,
@@ -509,7 +487,7 @@ def create_message_handler(
 
         except RabbitMQPublisherError as exc:
             # Log error but don't fail - the original error will be raised
-            logger.error("Failed to publish error result: %s", exc)
+            logger.error(f"Failed to publish error result: {exc}")
 
     async def message_handler(message: IncomingMessage) -> None:
         """Process incoming data.collected event from RabbitMQ."""
@@ -518,13 +496,13 @@ def create_message_handler(
             try:
                 # Decode message body
                 body = message.body.decode("utf-8")
-                logger.info("Received message: %s...", body[:100])
+                logger.info(f"Received message: {body[:100]}...")
 
                 # Parse JSON envelope
                 try:
                     envelope = json.loads(body)
                 except json.JSONDecodeError as exc:
-                    logger.error("Invalid JSON in message: %s", exc)
+                    logger.error(f"Invalid JSON in message: {exc}")
                     raise
 
                 # Validate event format
@@ -539,22 +517,20 @@ def create_message_handler(
                 with _db_session(session_factory) as db:
                     result = await process_event_format(envelope, db)
                     logger.info(
-                        "Event processed: event_id=%s, success=%d, errors=%d",
-                        result.get("event_id"),
-                        result.get("success_count", 0),
-                        result.get("error_count", 0),
+                        f"Event processed: event_id={result.get('event_id')}, "
+                        f"success={result.get('success_count', 0)}, errors={result.get('error_count', 0)}"
                     )
 
             except (json.JSONDecodeError, ValueError) as exc:
-                logger.error("Validation error for event_id=%s: %s", event_id, exc)
+                logger.error(f"Validation error for event_id={event_id}: {exc}")
                 raise
 
             except (MinioAdapterError, AnalyticsRepositoryError) as exc:
-                logger.error("Infrastructure error for event_id=%s: %s", event_id, exc)
+                logger.error(f"Infrastructure error for event_id={event_id}: {exc}")
                 raise
 
             except Exception as exc:
-                logger.error("Unexpected error processing event_id=%s: %s", event_id, exc)
+                logger.error(f"Unexpected error processing event_id={event_id}: {exc}")
                 logger.exception("Message processing error details:")
                 raise
 
@@ -607,13 +583,9 @@ def process_single_item(
 
         try:
             error_repo.save(error_data)
-            logger.debug(
-                "Saved error record: content_id=%s, error_code=%s",
-                content_id,
-                error_code,
-            )
+            logger.debug(f"Saved error record: content_id={content_id}, error_code={error_code}")
         except Exception as exc:
-            logger.error("Failed to save error record: %s", exc)
+            logger.error(f"Failed to save error record: {exc}")
 
         return {
             "status": "error",
@@ -659,7 +631,7 @@ def process_single_item(
         }
 
     except Exception as exc:
-        logger.error("Error processing item %s: %s", content_id, exc)
+        logger.error(f"Error processing item {content_id}: {exc}")
         return {
             "status": "error",
             "content_id": content_id,
@@ -710,9 +682,7 @@ def enrich_with_batch_context(
             meta["crawled_at"] = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
         except (ValueError, AttributeError):
             logger.warning(
-                "Failed to parse crawled_at timestamp: %s (content_id=%s)",
-                timestamp,
-                content_id,
+                f"Failed to parse crawled_at timestamp: {timestamp} (content_id={content_id})"
             )
             meta["crawled_at"] = None
     else:
@@ -720,14 +690,9 @@ def enrich_with_batch_context(
 
     # Log enriched metadata for debugging
     logger.debug(
-        "Enriched item metadata: content_id=%s, job_id=%s, batch_index=%s, "
-        "task_type=%s, keyword_source=%s, pipeline_version=%s",
-        content_id,
-        meta.get("job_id"),
-        meta.get("batch_index"),
-        meta.get("task_type"),
-        meta.get("keyword_source"),
-        meta.get("pipeline_version"),
+        f"Enriched item metadata: content_id={content_id}, job_id={meta.get('job_id')}, "
+        f"batch_index={meta.get('batch_index')}, task_type={meta.get('task_type')}, "
+        f"keyword_source={meta.get('keyword_source')}, pipeline_version={meta.get('pipeline_version')}"
     )
 
     enriched["meta"] = meta

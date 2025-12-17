@@ -355,22 +355,20 @@ class ConfigValidator:
         for result in self._results:
             if result.valid:
                 if result.severity == "warning":
-                    logger.warning("[WARN] %s: %s", result.name, result.message)
+                    logger.warning(f"[WARN] {result.name}: {result.message}")
                 else:
-                    logger.info("[OK] %s: %s", result.name, result.message)
+                    logger.info(f"[OK] {result.name}: {result.message}")
             else:
                 if result.severity == "error":
-                    logger.error("[FAIL] %s: %s", result.name, result.message)
+                    logger.error(f"[FAIL] {result.name}: {result.message}")
                 else:
-                    logger.warning("[WARN] %s: %s", result.name, result.message)
+                    logger.warning(f"[WARN] {result.name}: {result.message}")
 
         logger.info("=" * 60)
         if errors:
-            logger.error(
-                "Validation FAILED: %d error(s), %d warning(s)", len(errors), len(warnings)
-            )
+            logger.error(f"Validation FAILED: {len(errors)} error(s), {len(warnings)} warning(s)")
         elif warnings:
-            logger.warning("Validation PASSED with %d warning(s)", len(warnings))
+            logger.warning(f"Validation PASSED with {len(warnings)} warning(s)")
         else:
             logger.info("Validation PASSED: All checks OK")
         logger.info("=" * 60)

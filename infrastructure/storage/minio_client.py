@@ -236,7 +236,7 @@ class MinioAdapter:
         if not bucket or not object_path:
             raise ValueError("bucket and object_path are required")
 
-        logger.info("Downloading JSON from MinIO bucket=%s, path=%s", bucket, object_path)
+        logger.info(f"Downloading JSON from MinIO bucket={bucket}, path={object_path}")
         response = None
         try:
             # First, get object metadata to check compression
@@ -291,10 +291,10 @@ class MinioAdapter:
         except (MinioObjectNotFoundError, MinioDecompressionError, MinioAdapterError):
             raise
         except S3Error as exc:
-            logger.error("MinIO S3 error: %s", exc)
+            logger.error(f"MinIO S3 error: {exc}")
             raise MinioAdapterError(f"MinIO S3 error: {exc}") from exc
         except Exception as exc:
-            logger.error("Failed to fetch JSON from MinIO: %s", exc)
+            logger.error(f"Failed to fetch JSON from MinIO: {exc}")
             raise MinioAdapterError(f"Failed to fetch from MinIO: {exc}") from exc
         finally:
             if response is not None:
@@ -396,10 +396,7 @@ class MinioAdapter:
             )
 
             logger.info(
-                "Uploaded JSON to MinIO bucket=%s, path=%s, size=%d",
-                bucket,
-                object_path,
-                final_size,
+                f"Uploaded JSON to MinIO bucket={bucket}, path={object_path}, size={final_size}"
             )
 
             return {
@@ -411,8 +408,8 @@ class MinioAdapter:
             }
 
         except S3Error as exc:
-            logger.error("MinIO S3 error during upload: %s", exc)
+            logger.error(f"MinIO S3 error during upload: {exc}")
             raise MinioAdapterError(f"MinIO upload failed: {exc}") from exc
         except Exception as exc:
-            logger.error("Failed to upload JSON to MinIO: %s", exc)
+            logger.error(f"Failed to upload JSON to MinIO: {exc}")
             raise MinioAdapterError(f"Upload failed: {exc}") from exc

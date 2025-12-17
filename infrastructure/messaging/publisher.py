@@ -76,9 +76,7 @@ class RabbitMQPublisher:
         self._is_setup = False
 
         logger.info(
-            "RabbitMQ publisher initialized (exchange=%s, routing_key=%s)",
-            self.exchange_name,
-            self.routing_key,
+            f"RabbitMQ publisher initialized (exchange={self.exchange_name}, routing_key={self.routing_key})"
         )
 
     async def setup(self) -> None:
@@ -95,7 +93,7 @@ class RabbitMQPublisher:
             return
 
         try:
-            logger.info("Declaring exchange '%s' for result publishing...", self.exchange_name)
+            logger.info(f"Declaring exchange '{self.exchange_name}' for result publishing...")
 
             self.exchange = await self.channel.declare_exchange(
                 self.exchange_name,
@@ -105,12 +103,11 @@ class RabbitMQPublisher:
 
             self._is_setup = True
             logger.info(
-                "Exchange '%s' declared successfully (type=topic, durable=True)",
-                self.exchange_name,
+                f"Exchange '{self.exchange_name}' declared successfully (type=topic, durable=True)"
             )
 
         except Exception as exc:
-            logger.error("Failed to declare exchange '%s': %s", self.exchange_name, exc)
+            logger.error(f"Failed to declare exchange '{self.exchange_name}': {exc}")
             raise RabbitMQPublisherError(f"Failed to setup publisher: {exc}") from exc
 
     async def publish(
@@ -145,18 +142,12 @@ class RabbitMQPublisher:
             )
 
             logger.debug(
-                "Published message to exchange=%s, routing_key=%s, size=%d bytes",
-                self.exchange_name,
-                key,
-                len(body),
+                f"Published message to exchange={self.exchange_name}, routing_key={key}, size={len(body)} bytes"
             )
 
         except Exception as exc:
             logger.error(
-                "Failed to publish message to exchange=%s, routing_key=%s: %s",
-                self.exchange_name,
-                key,
-                exc,
+                f"Failed to publish message to exchange={self.exchange_name}, routing_key={key}: {exc}"
             )
             raise RabbitMQPublisherError(f"Failed to publish message: {exc}") from exc
 
@@ -192,14 +183,14 @@ class RabbitMQPublisher:
 
         # Log summary for monitoring
         payload = message_dict.get("payload", {})
+        job_id = payload.get("job_id")
+        success = message_dict.get("success")
+        batch_size = payload.get("batch_size", 0)
+        success_count = payload.get("success_count", 0)
+        error_count = payload.get("error_count", 0)
         logger.info(
-            "Published analyze result: job_id=%s, success=%s, "
-            "batch_size=%d, success_count=%d, error_count=%d",
-            payload.get("job_id"),
-            message_dict.get("success"),
-            payload.get("batch_size", 0),
-            payload.get("success_count", 0),
-            payload.get("error_count", 0),
+            f"Published analyze result: job_id={job_id}, success={success}, "
+            f"batch_size={batch_size}, success_count={success_count}, error_count={error_count}"
         )
 
     def is_ready(self) -> bool:

@@ -40,7 +40,7 @@ async def main():
         try:
             # Initialize PhoBERT
             logger.info("Initializing PhoBERT ONNX model...")
-            logger.info("PhoBERT model path: %s", settings.phobert_model_path)
+            logger.info(f"PhoBERT model path: {settings.phobert_model_path}")
             phobert = PhoBERTONNX(
                 model_path=settings.phobert_model_path, max_length=settings.phobert_max_length
             )
@@ -50,19 +50,16 @@ async def main():
         except FileNotFoundError as e:
             phobert_status["error"] = str(e)
             logger.error(
-                "PhoBERT model files not found: %s. "
+                f"PhoBERT model files not found: {e}. "
                 "Sentiment analysis will be DISABLED. "
-                "Please ensure model files exist at: %s",
-                e,
-                settings.phobert_model_path,
+                f"Please ensure model files exist at: {settings.phobert_model_path}"
             )
             phobert = None
 
         except Exception as e:
             phobert_status["error"] = str(e)
             logger.error(
-                "Failed to initialize PhoBERT model: %s. " "Sentiment analysis will be DISABLED.",
-                e,
+                f"Failed to initialize PhoBERT model: {e}. Sentiment analysis will be DISABLED."
             )
             logger.exception("PhoBERT initialization error details:")
             phobert = None
@@ -92,14 +89,14 @@ async def main():
         # Log AI model health summary
         logger.info("=" * 50)
         logger.info("AI Model Health Check Summary:")
-        logger.info(
-            "  - PhoBERT (Sentiment): %s",
-            "ENABLED" if phobert_status["enabled"] else f"DISABLED ({phobert_status['error']})",
+        phobert_msg = (
+            "ENABLED" if phobert_status["enabled"] else f"DISABLED ({phobert_status['error']})"
         )
-        logger.info(
-            "  - SpaCy-YAKE (Keywords): %s",
-            "ENABLED" if spacyyake_status["enabled"] else f"DISABLED ({spacyyake_status['error']})",
+        spacyyake_msg = (
+            "ENABLED" if spacyyake_status["enabled"] else f"DISABLED ({spacyyake_status['error']})"
         )
+        logger.info(f"  - PhoBERT (Sentiment): {phobert_msg}")
+        logger.info(f"  - SpaCy-YAKE (Keywords): {spacyyake_msg}")
         logger.info("=" * 50)
 
         if not phobert_status["enabled"]:
@@ -117,10 +114,7 @@ async def main():
         exchange_name = settings.event_exchange
         routing_key = settings.event_routing_key
         logger.info(
-            "Connecting to event queue: exchange=%s, routing_key=%s, queue=%s",
-            exchange_name,
-            routing_key,
-            queue_name,
+            f"Connecting to event queue: exchange={exchange_name}, routing_key={routing_key}, queue={queue_name}"
         )
 
         rabbitmq_client = RabbitMQClient(
@@ -139,9 +133,7 @@ async def main():
         if settings.publish_enabled:
             logger.info("Initializing RabbitMQ publisher...")
             logger.info(
-                "Publisher config: exchange=%s, routing_key=%s",
-                settings.publish_exchange,
-                settings.publish_routing_key,
+                f"Publisher config: exchange={settings.publish_exchange}, routing_key={settings.publish_routing_key}"
             )
 
             # Create publisher using the same channel as consumer

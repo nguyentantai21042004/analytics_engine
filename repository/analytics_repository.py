@@ -56,11 +56,7 @@ class AnalyticsRepository:
         # Try to extract valid UUID from malformed value
         sanitized = extract_uuid(project_id)
         if sanitized:
-            logger.warning(
-                "Sanitized invalid project_id: %s -> %s",
-                project_id,
-                sanitized,
-            )
+            logger.warning(f"Sanitized invalid project_id: {project_id} -> {sanitized}")
             analytics_data["project_id"] = sanitized
         else:
             raise ValueError(f"Invalid project_id format, cannot extract UUID: {project_id}")
@@ -98,13 +94,13 @@ class AnalyticsRepository:
             if existing is None:
                 post = PostAnalytics(**analytics_data)
                 self.db.add(post)
-                logger.debug("Creating new PostAnalytics record: id=%s", post_id)
+                logger.debug(f"Creating new PostAnalytics record: id={post_id}")
             else:
                 post = existing
                 for key, value in analytics_data.items():
                     if hasattr(post, key):
                         setattr(post, key, value)
-                logger.debug("Updating existing PostAnalytics record: id=%s", post_id)
+                logger.debug(f"Updating existing PostAnalytics record: id={post_id}")
 
             self.db.commit()
             self.db.refresh(post)
@@ -165,7 +161,7 @@ class AnalyticsRepository:
             return result > 0
         except SQLAlchemyError as exc:
             self.db.rollback()
-            logger.error("Database error deleting post_id=%s: %s", post_id, exc)
+            logger.error(f"Database error deleting post_id={post_id}: {exc}")
             raise AnalyticsRepositoryError(f"Failed to delete analytics: {exc}") from exc
 
     def save_batch(self, analytics_records: List[Dict[str, Any]]) -> List[PostAnalytics]:
@@ -200,7 +196,7 @@ class AnalyticsRepository:
                 try:
                     self._sanitize_project_id(analytics_data)
                 except ValueError as e:
-                    logger.warning("Skipping record with invalid project_id: %s", e)
+                    logger.warning(f"Skipping record with invalid project_id: {e}")
                     continue
 
                 existing = self.get_by_id(post_id)
@@ -219,12 +215,12 @@ class AnalyticsRepository:
             for record in saved_records:
                 self.db.refresh(record)
 
-            logger.debug("Saved %d analytics records in batch", len(saved_records))
+            logger.debug(f"Saved {len(saved_records)} analytics records in batch")
             return saved_records
 
         except SQLAlchemyError as exc:
             self.db.rollback()
-            logger.error("Database error saving batch of analytics: %s", exc)
+            logger.error(f"Database error saving batch of analytics: {exc}")
             raise AnalyticsRepositoryError(f"Failed to save analytics batch: {exc}") from exc
 
     def get_by_job_id(

@@ -59,11 +59,7 @@ def log_raw_event_payload(envelope: Dict[str, Any], event_id: str = "unknown") -
     # Sanitize PII - remove actual content, keep structure
     sanitized = _sanitize_for_logging(envelope)
 
-    logger.debug(
-        "RAW EVENT PAYLOAD (event_id=%s): %s",
-        event_id,
-        sanitized,
-    )
+    logger.debug(f"RAW EVENT PAYLOAD (event_id={event_id}): {sanitized}")
 
 
 def log_extracted_item_data(
@@ -83,14 +79,12 @@ def log_extracted_item_data(
 
     meta = item.get("meta", {})
 
+    meta_keys = list(meta.keys())
+    content_keys = list(item.get("content", {}).keys())
+    interaction_keys = list(item.get("interaction", {}).keys())
     logger.debug(
-        "EXTRACTED ITEM DATA: content_id=%s, platform=%s, "
-        "meta_keys=%s, content_keys=%s, interaction_keys=%s",
-        content_id,
-        platform,
-        list(meta.keys()),
-        list(item.get("content", {}).keys()),
-        list(item.get("interaction", {}).keys()),
+        f"EXTRACTED ITEM DATA: content_id={content_id}, platform={platform}, "
+        f"meta_keys={meta_keys}, content_keys={content_keys}, interaction_keys={interaction_keys}"
     )
 
 
@@ -108,22 +102,21 @@ def log_analytics_payload_before_save(
         return
 
     # Log key fields for debugging
+    job_id = payload.get("job_id")
+    batch_index = payload.get("batch_index")
+    task_type = payload.get("task_type")
+    keyword_source = payload.get("keyword_source")
+    crawled_at = payload.get("crawled_at")
+    pipeline_version = payload.get("pipeline_version")
+    is_viral = payload.get("is_viral")
+    is_viral_type = type(is_viral).__name__
+    is_kol = payload.get("is_kol")
+    is_kol_type = type(is_kol).__name__
     logger.debug(
-        "ANALYTICS PAYLOAD BEFORE SAVE: content_id=%s, "
-        "job_id=%s, batch_index=%s, task_type=%s, keyword_source=%s, "
-        "crawled_at=%s, pipeline_version=%s, "
-        "is_viral=%s (type=%s), is_kol=%s (type=%s)",
-        content_id,
-        payload.get("job_id"),
-        payload.get("batch_index"),
-        payload.get("task_type"),
-        payload.get("keyword_source"),
-        payload.get("crawled_at"),
-        payload.get("pipeline_version"),
-        payload.get("is_viral"),
-        type(payload.get("is_viral")).__name__,
-        payload.get("is_kol"),
-        type(payload.get("is_kol")).__name__,
+        f"ANALYTICS PAYLOAD BEFORE SAVE: content_id={content_id}, "
+        f"job_id={job_id}, batch_index={batch_index}, task_type={task_type}, keyword_source={keyword_source}, "
+        f"crawled_at={crawled_at}, pipeline_version={pipeline_version}, "
+        f"is_viral={is_viral} (type={is_viral_type}), is_kol={is_kol} (type={is_kol_type})"
     )
 
 
@@ -144,13 +137,10 @@ def log_metadata_extraction_paths(
     if not should_log_debug():
         return
 
+    value_type = type(value).__name__ if value is not None else "None"
     logger.debug(
-        "METADATA EXTRACTION: field=%s, value=%s, source=%s, type=%s (event_id=%s)",
-        field_name,
-        value,
-        source_path,
-        type(value).__name__ if value is not None else "None",
-        event_id,
+        f"METADATA EXTRACTION: field={field_name}, value={value}, source={source_path}, "
+        f"type={value_type} (event_id={event_id})"
     )
 
 
@@ -170,10 +160,7 @@ def log_missing_metadata_fields(
         return
 
     logger.warning(
-        "MISSING METADATA FIELDS: fields=%s, searched_paths=%s (event_id=%s)",
-        missing_fields,
-        searched_paths,
-        event_id,
+        f"MISSING METADATA FIELDS: fields={missing_fields}, searched_paths={searched_paths} (event_id={event_id})"
     )
 
 
@@ -200,21 +187,14 @@ def log_data_quality_metrics(
     sentiment_pct = (items_with_sentiment / total_items) * 100
 
     logger.info(
-        "DATA QUALITY METRICS: job_id=%s, total=%d, "
-        "metadata_complete=%.1f%%, sentiment_analyzed=%.1f%%, truncated_ids=%d",
-        job_id,
-        total_items,
-        metadata_pct,
-        sentiment_pct,
-        truncated_ids,
+        f"DATA QUALITY METRICS: job_id={job_id}, total={total_items}, "
+        f"metadata_complete={metadata_pct:.1f}%, sentiment_analyzed={sentiment_pct:.1f}%, truncated_ids={truncated_ids}"
     )
 
     # Alert on low metadata completeness
     if metadata_pct < 80:
         logger.warning(
-            "LOW METADATA COMPLETENESS: job_id=%s, only %.1f%% of items have full metadata",
-            job_id,
-            metadata_pct,
+            f"LOW METADATA COMPLETENESS: job_id={job_id}, only {metadata_pct:.1f}% of items have full metadata"
         )
 
 

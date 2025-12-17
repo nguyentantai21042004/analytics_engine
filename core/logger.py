@@ -1,6 +1,41 @@
 """
 Centralized logging configuration using Loguru.
 Follows Single Responsibility Principle - only handles logging setup.
+
+IMPORTANT: Loguru Formatting Guide
+==================================
+
+Loguru does NOT support printf-style formatting like Python's standard logging module.
+You MUST use one of these approaches:
+
+1. F-strings (RECOMMENDED):
+   logger.info(f"Processing post_id={post_id}")
+   logger.error(f"Failed to process {item_id}: {error}")
+
+2. Loguru's format-style with positional args:
+   logger.info("Processing post_id={}", post_id)
+   logger.error("Failed to process {}: {}", item_id, error)
+
+3. Loguru's format-style with keyword args:
+   logger.info("Processing post_id={pid}", pid=post_id)
+
+WRONG (will show %s literally in output):
+   logger.info("Processing post_id=%s", post_id)  # DON'T DO THIS!
+   logger.error("Error: %s", error)  # DON'T DO THIS!
+
+Log Levels:
+-----------
+- DEBUG: Detailed diagnostic information
+- INFO: General operational events
+- WARNING: Unexpected but handled situations
+- ERROR: Errors that need attention
+- CRITICAL: System failures
+
+Configuration:
+--------------
+- LOG_LEVEL env var controls console output level (default: INFO)
+- File logs always capture DEBUG level
+- Logs rotate at 100MB, retained for 30 days
 """
 
 import sys

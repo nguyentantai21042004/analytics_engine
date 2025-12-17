@@ -111,7 +111,7 @@ class AnalyticsOrchestrator:
         if not post_id:
             raise ValueError("post_data must contain 'meta.id' field")
 
-        logger.info("Starting analytics pipeline for post_id=%s", post_id)
+        logger.info(f"Starting analytics pipeline for post_id={post_id}")
 
         # --- STEP 1: PREPROCESS ---
         prep_result = self._run_preprocessor(post_data)
@@ -126,11 +126,9 @@ class AnalyticsOrchestrator:
                 post_data, prep_result, intent_result, processing_time_ms=processing_time_ms
             )
             self.repository.save(analytics_payload)
+            intent = intent_result.get("intent")
             logger.info(
-                "Skipped noisy/spam post_id=%s with intent=%s in %dms",
-                post_id,
-                intent_result.get("intent"),
-                processing_time_ms,
+                f"Skipped noisy/spam post_id={post_id} with intent={intent} in {processing_time_ms}ms"
             )
             return analytics_payload
 
@@ -155,11 +153,7 @@ class AnalyticsOrchestrator:
             processing_time_ms=processing_time_ms,
         )
         self.repository.save(analytics_payload)
-        logger.info(
-            "Successfully processed post_id=%s in %dms",
-            post_id,
-            processing_time_ms,
-        )
+        logger.info(f"Successfully processed post_id={post_id} in {processing_time_ms}ms")
         return analytics_payload
 
     # --------------------------------------------------------------------- #
@@ -206,7 +200,7 @@ class AnalyticsOrchestrator:
         try:
             return self.keyword_extractor.extract(clean_text)
         except Exception as exc:  # pragma: no cover - defensive fallback
-            logger.error("Keyword extraction failed: %s", exc)
+            logger.error(f"Keyword extraction failed: {exc}")
             # Fallback to empty keyword set so downstream sentiment/impact still work.
             return KeywordResult(keywords=[], metadata={"error": str(exc)})
 
@@ -226,7 +220,7 @@ class AnalyticsOrchestrator:
         try:
             return self.sentiment_analyzer.analyze(clean_text, keywords)
         except Exception as exc:  # pragma: no cover - defensive fallback
-            logger.error("Sentiment analysis failed: %s", exc)
+            logger.error(f"Sentiment analysis failed: {exc}")
             # Fallback to neutral sentiment so ImpactCalculator can still run.
             return {
                 "overall": {
@@ -254,7 +248,7 @@ class AnalyticsOrchestrator:
                 platform=str(platform).upper(),
             )
         except Exception as exc:  # pragma: no cover - defensive fallback
-            logger.error("Impact calculation failed: %s", exc)
+            logger.error(f"Impact calculation failed: {exc}")
             # Fallback to neutral/low impact to keep record consistent.
             return {
                 "impact_score": 0.0,
