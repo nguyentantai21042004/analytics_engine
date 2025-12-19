@@ -258,41 +258,37 @@ Analytics publishes **1 message per batch** (not per item):
 
 ### Message Types
 
-The result publishing system uses the following dataclasses (defined in `models/messages.py`):
+The result publishing system uses flat JSON format (defined in `models/messages.py`):
 
 ```python
 @dataclass
-class AnalyzeItem:
-    """Single analyzed item result."""
-    content_id: str
-    sentiment: str | None = None
-    sentiment_score: float | None = None
-    topics: list[str] | None = None
-    entities: list[dict] | None = None
-
-@dataclass
-class AnalyzeError:
-    """Error information for failed analysis."""
-    content_id: str
-    error: str
-
-@dataclass
 class AnalyzeResultPayload:
-    """Payload containing batch analysis results."""
-    project_id: str
-    job_id: str
-    task_type: str  # Always "analyze_result"
-    batch_size: int
-    success_count: int
-    error_count: int
-    results: list[AnalyzeItem] | None = None
-    errors: list[AnalyzeError] | None = None
+    """Flat payload for Collector consumption.
 
-@dataclass
-class AnalyzeResultMessage:
-    """Top-level message for analyze results."""
-    success: bool
-    payload: AnalyzeResultPayload
+    Message format follows collector-crawler-contract.md Section 3.
+    Published as flat JSON with 6 fields only.
+    """
+    project_id: str  # Required, non-empty
+    job_id: str
+    task_type: str = "analyze_result"
+    batch_size: int = 0
+    success_count: int = 0
+    error_count: int = 0
+```
+
+### Message Format
+
+Analytics publishes **flat JSON** directly to Collector (no wrapper):
+
+```json
+{
+  "project_id": "proj_xyz",
+  "job_id": "proj_xyz-brand-0",
+  "task_type": "analyze_result",
+  "batch_size": 50,
+  "success_count": 48,
+  "error_count": 2
+}
 ```
 
 ### Publishing Flow
@@ -300,27 +296,25 @@ class AnalyzeResultMessage:
 ```
 1. Batch Processing Complete
    ↓
-2. Build Result Items (from processed results)
+2. Validate project_id (skip if empty)
    ↓
-3. Build Error Items (from failed items)
+3. Create AnalyzeResultPayload (flat)
    ↓
-4. Create AnalyzeResultMessage
+4. Serialize to JSON
    ↓
-5. Serialize to JSON
+5. Publish to results.inbound exchange
    ↓
-6. Publish to results.inbound exchange
-   ↓
-7. Log success/failure
+6. Log success/failure
 ```
 
-### Success vs Error Results
+### Result Scenarios
 
-| Scenario            | `success` | `success_count` | `error_count` | Description                 |
-| ------------------- | --------- | --------------- | ------------- | --------------------------- |
-| All items succeeded | `true`    | N               | 0             | Full batch success          |
-| Partial failure     | `true`    | N-M             | M             | Some items failed           |
-| MinIO fetch failed  | `false`   | 0               | N             | Entire batch failed         |
-| All items failed    | `false`   | 0               | N             | All individual items failed |
+| Scenario            | `success_count` | `error_count` | Description                 |
+| ------------------- | --------------- | ------------- | --------------------------- |
+| All items succeeded | N               | 0             | Full batch success          |
+| Partial failure     | N-M             | M             | Some items failed           |
+| MinIO fetch failed  | 0               | N             | Entire batch failed         |
+| All items failed    | 0               | N             | All individual items failed |
 
 ### Error Result Publishing
 
@@ -328,24 +322,17 @@ When MinIO fetch fails, Analytics publishes an error result:
 
 ```json
 {
-  "success": false,
-  "payload": {
-    "project_id": "proj_xyz",
-    "job_id": "proj_xyz-brand-0",
-    "task_type": "analyze_result",
-    "batch_size": 50,
-    "success_count": 0,
-    "error_count": 50,
-    "results": [],
-    "errors": [
-      {
-        "content_id": "batch",
-        "error": "MinIO fetch failed: Connection refused"
-      }
-    ]
-  }
+  "project_id": "proj_xyz",
+  "job_id": "proj_xyz-brand-0",
+  "task_type": "analyze_result",
+  "batch_size": 50,
+  "success_count": 0,
+  "error_count": 50
 }
 ```
+
+> **Note**: Error details are logged internally but not included in the published message.
+> Collector only needs counts to track progress.
 
 ### Publish Failure Handling
 

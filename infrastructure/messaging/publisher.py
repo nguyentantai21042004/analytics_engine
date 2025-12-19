@@ -153,43 +153,54 @@ class RabbitMQPublisher:
 
     async def publish_analyze_result(
         self,
-        message: Any,
+        payload: Any,
         routing_key: Optional[str] = None,
     ) -> None:
-        """Publish an analyze result message to Collector.
+        """Publish an analyze result payload to Collector.
 
-        This is a convenience method that handles AnalyzeResultMessage objects
-        or dictionaries.
+        Accepts AnalyzeResultPayload (flat format) or dictionary.
+        Validates that project_id is non-empty before publishing.
 
         Args:
-            message: AnalyzeResultMessage instance or dictionary.
+            payload: AnalyzeResultPayload instance or flat dictionary.
             routing_key: Optional routing key override.
 
         Raises:
-            RabbitMQPublisherError: If publishing fails.
+            RabbitMQPublisherError: If project_id is empty or publishing fails.
         """
         # Handle both dataclass and dict
-        if hasattr(message, "to_dict"):
-            message_dict = message.to_dict()
-        elif isinstance(message, dict):
-            message_dict = message
+        if hasattr(payload, "to_dict"):
+            message_dict = payload.to_dict()
+            project_id = getattr(payload, "project_id", None)
+        elif isinstance(payload, dict):
+            message_dict = payload
+            # Handle both flat and nested (legacy) formats
+            if "payload" in payload:
+                project_id = payload.get("payload", {}).get("project_id")
+            else:
+                project_id = payload.get("project_id")
         else:
             raise RabbitMQPublisherError(
-                f"Invalid message type: {type(message).__name__}. "
-                "Expected AnalyzeResultMessage or dict."
+                f"Invalid message type: {type(payload).__name__}. "
+                "Expected AnalyzeResultPayload or dict."
+            )
+
+        # Validate project_id is non-empty (required by Collector contract)
+        if not project_id:
+            raise RabbitMQPublisherError(
+                "project_id is required for publishing analyze results. "
+                "Collector will reject messages without project_id."
             )
 
         await self.publish(message_dict, routing_key)
 
-        # Log summary for monitoring
-        payload = message_dict.get("payload", {})
-        job_id = payload.get("job_id")
-        success = message_dict.get("success")
-        batch_size = payload.get("batch_size", 0)
-        success_count = payload.get("success_count", 0)
-        error_count = payload.get("error_count", 0)
+        # Log summary for monitoring (flat format)
+        job_id = message_dict.get("job_id")
+        batch_size = message_dict.get("batch_size", 0)
+        success_count = message_dict.get("success_count", 0)
+        error_count = message_dict.get("error_count", 0)
         logger.info(
-            f"Published analyze result: job_id={job_id}, success={success}, "
+            f"Published analyze result: project_id={project_id}, job_id={job_id}, "
             f"batch_size={batch_size}, success_count={success_count}, error_count={error_count}"
         )
 

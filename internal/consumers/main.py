@@ -38,13 +38,13 @@ from infrastructure.storage.minio_client import (
 )
 from models.database import Base
 from models.messages import (
-    AnalyzeResultMessage,
     AnalyzeResultPayload,
     AnalyzeItem,
     AnalyzeError,
     create_error_result,
 )
 from repository.analytics_repository import AnalyticsRepository, AnalyticsRepositoryError
+from repository.comment_repository import CommentRepository, CommentRepositoryError
 from repository.crawl_error_repository import CrawlErrorRepository
 from services.analytics.orchestrator import AnalyticsOrchestrator
 from utils.project_id_extractor import extract_project_id
@@ -130,6 +130,7 @@ def parse_event_metadata(envelope: dict[str, Any]) -> dict[str, Any]:
         "content_count": payload.get("content_count"),
         "platform": payload.get("platform"),
         "task_type": payload.get("task_type"),
+        "brand_name": payload.get("brand_name"),  # NEW: Contract v2.0
         "keyword": payload.get("keyword"),
     }
 
@@ -137,7 +138,8 @@ def parse_event_metadata(envelope: dict[str, Any]) -> dict[str, Any]:
     logger.debug(
         f"Extracted event metadata: event_id={metadata.get('event_id')}, job_id={metadata.get('job_id')}, "
         f"batch_index={metadata.get('batch_index')}, task_type={metadata.get('task_type')}, "
-        f"keyword={metadata.get('keyword')}, platform={metadata.get('platform')}"
+        f"brand_name={metadata.get('brand_name')}, keyword={metadata.get('keyword')}, "
+        f"platform={metadata.get('platform')}"
     )
 
     # Log warnings for missing critical fields
@@ -148,6 +150,8 @@ def parse_event_metadata(envelope: dict[str, Any]) -> dict[str, Any]:
         missing_fields.append("batch_index")
     if not metadata.get("task_type"):
         missing_fields.append("task_type")
+    if not metadata.get("brand_name"):
+        missing_fields.append("brand_name")
     if not metadata.get("keyword"):
         missing_fields.append("keyword")
 
@@ -333,6 +337,7 @@ def create_message_handler(
 
         # Process batch items
         analytics_repo = AnalyticsRepository(db)
+        comment_repo = CommentRepository(db)
         error_repo = CrawlErrorRepository(db)
 
         success_count = 0
@@ -347,6 +352,7 @@ def create_message_handler(
                     event_metadata=event_metadata,
                     project_id=project_id,
                     analytics_repo=analytics_repo,
+                    comment_repo=comment_repo,
                     error_repo=error_repo,
                     sentiment_analyzer=sentiment_analyzer,
                 )
@@ -438,22 +444,29 @@ def create_message_handler(
             error_count: Failed items
             processed_results: List of individual processing results
         """
+        # Validate project_id before publishing (required by Collector contract)
+        if not project_id:
+            logger.warning(
+                f"Skipping result publish: project_id is required but was empty/None "
+                f"(job_id={job_id}, batch_size={batch_size})"
+            )
+            return
+
         try:
-            result_msg = AnalyzeResultMessage(
-                success=error_count < batch_size,
-                payload=AnalyzeResultPayload(
-                    project_id=project_id,
-                    job_id=job_id,
-                    task_type="analyze_result",
-                    batch_size=batch_size,
-                    success_count=success_count,
-                    error_count=error_count,
-                    results=build_result_items(processed_results),
-                    errors=build_error_items(processed_results),
-                ),
+            # Build flat payload for Collector (no wrapper)
+            result_payload = AnalyzeResultPayload(
+                project_id=project_id,
+                job_id=job_id,
+                task_type="analyze_result",
+                batch_size=batch_size,
+                success_count=success_count,
+                error_count=error_count,
+                # Internal-only fields for debugging
+                _results=build_result_items(processed_results),
+                _errors=build_error_items(processed_results),
             )
 
-            await publisher.publish_analyze_result(result_msg)
+            await publisher.publish_analyze_result(result_payload)
 
         except RabbitMQPublisherError as exc:
             # Log error but don't fail the batch processing
@@ -475,15 +488,24 @@ def create_message_handler(
             batch_size: Expected items in batch (all marked as failed)
             error_message: Description of the batch-level error
         """
+        # Validate project_id before publishing (required by Collector contract)
+        if not project_id:
+            logger.warning(
+                f"Skipping error result publish: project_id is required but was empty/None "
+                f"(job_id={job_id}, batch_size={batch_size})"
+            )
+            return
+
         try:
-            error_msg = create_error_result(
+            # Build flat error payload for Collector
+            error_payload = create_error_result(
                 project_id=project_id,
                 job_id=job_id,
                 batch_size=batch_size,
                 error_message=error_message,
             )
 
-            await publisher.publish_analyze_result(error_msg)
+            await publisher.publish_analyze_result(error_payload)
 
         except RabbitMQPublisherError as exc:
             # Log error but don't fail - the original error will be raised
@@ -542,6 +564,7 @@ def process_single_item(
     event_metadata: dict[str, Any],
     project_id: Optional[str],
     analytics_repo: AnalyticsRepository,
+    comment_repo: CommentRepository,
     error_repo: CrawlErrorRepository,
     sentiment_analyzer: Optional[Any] = None,
 ) -> dict[str, Any]:
@@ -552,6 +575,7 @@ def process_single_item(
         event_metadata: Event metadata for context
         project_id: Extracted project ID
         analytics_repo: Analytics repository instance
+        comment_repo: Comment repository instance
         error_repo: Error repository instance
         sentiment_analyzer: SentimentAnalyzer instance (optional)
 
@@ -611,6 +635,17 @@ def process_single_item(
         # Debug: Log analytics payload before save
         log_analytics_payload_before_save(result, content_id)
 
+        # Save comments to post_comments table (Contract v2.0)
+        comments_saved = 0
+        raw_comments = item.get("comments") or []
+        if raw_comments:
+            comments_saved = _save_comments(
+                comments=raw_comments,
+                post_id=content_id,
+                comment_repo=comment_repo,
+            )
+            logger.debug(f"Saved {comments_saved} comments for post_id={content_id}")
+
         # Check if item has full metadata
         has_full_metadata = all(
             result.get(field) is not None
@@ -628,6 +663,7 @@ def process_single_item(
             "impact_score": result.get("impact_score", 0.0),
             "has_full_metadata": has_full_metadata,
             "has_sentiment": has_sentiment,
+            "comments_saved": comments_saved,
         }
 
     except Exception as exc:
@@ -638,6 +674,63 @@ def process_single_item(
             "error_code": "INTERNAL_ERROR",
             "error_message": str(exc),
         }
+
+
+def _save_comments(
+    comments: List[dict[str, Any]],
+    post_id: str,
+    comment_repo: CommentRepository,
+) -> int:
+    """Save comments from crawler item to database.
+
+    Args:
+        comments: List of comment objects from crawler
+        post_id: Parent post ID
+        comment_repo: Comment repository instance
+
+    Returns:
+        Number of comments saved
+    """
+    if not comments:
+        return 0
+
+    comment_records = []
+    for comment in comments:
+        # Skip comments without text
+        text = comment.get("text")
+        if not text:
+            continue
+
+        # Parse commented_at timestamp
+        commented_at = None
+        raw_timestamp = comment.get("created_at")
+        if raw_timestamp:
+            try:
+                commented_at = datetime.fromisoformat(raw_timestamp.replace("Z", "+00:00"))
+            except (ValueError, AttributeError):
+                logger.warning(f"Failed to parse comment timestamp: {raw_timestamp}")
+
+        comment_records.append(
+            {
+                "post_id": post_id,
+                "comment_id": comment.get("id"),
+                "text": text,
+                "author_name": comment.get("author_name"),
+                "likes": comment.get("likes", 0),
+                "commented_at": commented_at,
+                # sentiment fields will be filled later by analysis
+            }
+        )
+
+    if not comment_records:
+        return 0
+
+    try:
+        saved = comment_repo.save_batch(comment_records)
+        return len(saved)
+    except CommentRepositoryError as exc:
+        logger.error(f"Failed to save comments for post_id={post_id}: {exc}")
+        return 0
 
 
 def enrich_with_batch_context(
@@ -667,6 +760,10 @@ def enrich_with_batch_context(
     meta["task_type"] = event_metadata.get("task_type")
     meta["keyword_source"] = event_metadata.get("keyword")
 
+    # NEW: Brand/Keyword from event payload (Contract v2.0)
+    meta["brand_name"] = event_metadata.get("brand_name")
+    meta["keyword"] = event_metadata.get("keyword")
+
     # Set pipeline version
     platform = meta.get("platform", event_metadata.get("platform", "unknown"))
     meta["pipeline_version"] = f"crawler_{str(platform).lower()}_v3"
@@ -688,11 +785,28 @@ def enrich_with_batch_context(
     else:
         meta["crawled_at"] = None
 
+    # NEW: Content fields from item (Contract v2.0)
+    content = enriched.get("content", {}) or {}
+    meta["content_text"] = content.get("text")
+    meta["content_transcription"] = content.get("transcription")
+    meta["media_duration"] = content.get("duration")
+    meta["hashtags"] = content.get("hashtags")
+    meta["permalink"] = meta.get("permalink")  # Already in meta from crawler
+
+    # NEW: Author fields from item (Contract v2.0)
+    author = enriched.get("author", {}) or {}
+    meta["author_id"] = author.get("id")
+    meta["author_name"] = author.get("name")
+    meta["author_username"] = author.get("username")
+    meta["author_avatar_url"] = author.get("avatar_url")
+    meta["author_is_verified"] = author.get("is_verified", False)
+
     # Log enriched metadata for debugging
     logger.debug(
         f"Enriched item metadata: content_id={content_id}, job_id={meta.get('job_id')}, "
         f"batch_index={meta.get('batch_index')}, task_type={meta.get('task_type')}, "
-        f"keyword_source={meta.get('keyword_source')}, pipeline_version={meta.get('pipeline_version')}"
+        f"brand_name={meta.get('brand_name')}, keyword={meta.get('keyword')}, "
+        f"author_id={meta.get('author_id')}, pipeline_version={meta.get('pipeline_version')}"
     )
 
     enriched["meta"] = meta

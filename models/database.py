@@ -4,9 +4,9 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import Boolean, Column, Float, Index, Integer, String, Text, TIMESTAMP
+from sqlalchemy import Boolean, Column, Float, ForeignKey, Index, Integer, String, Text, TIMESTAMP
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
 
@@ -67,11 +67,32 @@ class PostAnalytics(Base):
     crawled_at = Column(TIMESTAMP, nullable=True)
     pipeline_version = Column(String(50), nullable=True)
 
+    # Content storage (NEW - Contract v2.0)
+    content_text = Column(Text, nullable=True)
+    content_transcription = Column(Text, nullable=True)
+    media_duration = Column(Integer, nullable=True)
+    hashtags = Column(JSONB, nullable=True)
+    permalink = Column(Text, nullable=True)
+
+    # Author info (NEW - Contract v2.0)
+    author_id = Column(String(100), nullable=True)
+    author_name = Column(String(200), nullable=True)
+    author_username = Column(String(100), nullable=True)
+    author_avatar_url = Column(Text, nullable=True)
+    author_is_verified = Column(Boolean, nullable=True, default=False)
+
+    # Brand/Keyword for filtering (NEW - Contract v2.0)
+    brand_name = Column(String(100), nullable=True)
+    keyword = Column(String(200), nullable=True)
+
     # Error tracking
     fetch_status = Column(String(10), nullable=True, default="success", index=True)
     fetch_error = Column(Text, nullable=True)
     error_code = Column(String(50), nullable=True, index=True)
     error_details = Column(JSONB, nullable=True)
+
+    # Relationship to comments
+    comments = relationship("PostComment", back_populates="post", cascade="all, delete-orphan")
 
     # Table-level indexes
     __table_args__ = (
@@ -79,6 +100,50 @@ class PostAnalytics(Base):
         Index("idx_post_analytics_fetch_status", "fetch_status"),
         Index("idx_post_analytics_task_type", "task_type"),
         Index("idx_post_analytics_error_code", "error_code"),
+        Index("idx_post_analytics_brand_name", "brand_name"),
+        Index("idx_post_analytics_keyword", "keyword"),
+        Index("idx_post_analytics_author_id", "author_id"),
+    )
+
+
+class PostComment(Base):
+    """Post comment model for storing and analyzing comments.
+
+    This table stores comments from crawler items separately,
+    enabling comment-level sentiment analysis and querying.
+    """
+
+    __tablename__ = "post_comments"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    post_id = Column(
+        String(50),
+        ForeignKey("post_analytics.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    comment_id = Column(String(100), nullable=True)  # Original ID from platform
+
+    # Content
+    text = Column(Text, nullable=False)
+    author_name = Column(String(200), nullable=True)
+    likes = Column(Integer, nullable=True, default=0)
+
+    # Analysis results (filled by Analytics)
+    sentiment = Column(String(10), nullable=True)  # POSITIVE/NEGATIVE/NEUTRAL
+    sentiment_score = Column(Float, nullable=True)
+
+    # Timestamps
+    commented_at = Column(TIMESTAMP, nullable=True)
+    created_at = Column(TIMESTAMP, default=lambda: datetime.now(timezone.utc))
+
+    # Relationship back to post
+    post = relationship("PostAnalytics", back_populates="comments")
+
+    # Table-level indexes
+    __table_args__ = (
+        Index("idx_post_comments_post_id", "post_id"),
+        Index("idx_post_comments_sentiment", "sentiment"),
+        Index("idx_post_comments_commented_at", "commented_at"),
     )
 
 

@@ -13,9 +13,9 @@ from infrastructure.messaging.publisher import (
     RabbitMQPublisherError,
 )
 from models.messages import (
-    AnalyzeResultMessage,
     AnalyzeResultPayload,
     create_success_result,
+    create_error_result,
 )
 
 
@@ -130,7 +130,7 @@ class TestRabbitMQPublisherPublish:
         publisher = RabbitMQPublisher(channel=mock_channel)
         await publisher.setup()
 
-        message = {"success": True, "payload": {"job_id": "test"}}
+        message = {"project_id": "proj_123", "job_id": "test", "task_type": "analyze_result"}
         await publisher.publish(message)
 
         mock_exchange.publish.assert_called_once()
@@ -175,14 +175,14 @@ class TestRabbitMQPublisherPublishAnalyzeResult:
     """Tests for RabbitMQPublisher.publish_analyze_result() method."""
 
     @pytest.mark.asyncio
-    async def test_publish_analyze_result_with_dataclass(self, mock_channel, mock_exchange):
-        """Test publishing AnalyzeResultMessage dataclass."""
+    async def test_publish_analyze_result_flat_payload(self, mock_channel, mock_exchange):
+        """Test publishing AnalyzeResultPayload produces flat JSON."""
         mock_channel.declare_exchange.return_value = mock_exchange
 
         publisher = RabbitMQPublisher(channel=mock_channel)
         await publisher.setup()
 
-        msg = create_success_result(
+        payload = create_success_result(
             project_id="proj_123",
             job_id="proj_123-brand-0",
             batch_size=50,
@@ -190,42 +190,99 @@ class TestRabbitMQPublisherPublishAnalyzeResult:
             error_count=2,
         )
 
-        await publisher.publish_analyze_result(msg)
+        await publisher.publish_analyze_result(payload)
 
         mock_exchange.publish.assert_called_once()
         call_args = mock_exchange.publish.call_args
         published_body = call_args[0][0].body
         parsed = json.loads(published_body.decode("utf-8"))
 
-        assert parsed["success"] is True
-        assert parsed["payload"]["project_id"] == "proj_123"
-        assert parsed["payload"]["task_type"] == "analyze_result"
+        # Verify flat format (no wrapper)
+        assert "success" not in parsed
+        assert "payload" not in parsed
+        assert parsed["project_id"] == "proj_123"
+        assert parsed["job_id"] == "proj_123-brand-0"
+        assert parsed["task_type"] == "analyze_result"
+        assert parsed["batch_size"] == 50
+        assert parsed["success_count"] == 48
+        assert parsed["error_count"] == 2
+        # Internal fields excluded
+        assert "results" not in parsed
+        assert "errors" not in parsed
 
     @pytest.mark.asyncio
-    async def test_publish_analyze_result_with_dict(self, mock_channel, mock_exchange):
-        """Test publishing dictionary message."""
+    async def test_publish_analyze_result_with_flat_dict(self, mock_channel, mock_exchange):
+        """Test publishing flat dictionary message."""
         mock_channel.declare_exchange.return_value = mock_exchange
 
         publisher = RabbitMQPublisher(channel=mock_channel)
         await publisher.setup()
 
         msg_dict = {
-            "success": True,
-            "payload": {
-                "project_id": "proj_123",
-                "job_id": "proj_123-brand-0",
-                "task_type": "analyze_result",
-                "batch_size": 50,
-                "success_count": 48,
-                "error_count": 2,
-                "results": [],
-                "errors": [],
-            },
+            "project_id": "proj_123",
+            "job_id": "proj_123-brand-0",
+            "task_type": "analyze_result",
+            "batch_size": 50,
+            "success_count": 48,
+            "error_count": 2,
         }
 
         await publisher.publish_analyze_result(msg_dict)
 
         mock_exchange.publish.assert_called_once()
+        call_args = mock_exchange.publish.call_args
+        published_body = call_args[0][0].body
+        parsed = json.loads(published_body.decode("utf-8"))
+
+        assert parsed == msg_dict
+
+    @pytest.mark.asyncio
+    async def test_publish_analyze_result_empty_project_id_rejected(
+        self, mock_channel, mock_exchange
+    ):
+        """Test publishing with empty project_id raises error."""
+        mock_channel.declare_exchange.return_value = mock_exchange
+
+        publisher = RabbitMQPublisher(channel=mock_channel)
+        await publisher.setup()
+
+        payload = AnalyzeResultPayload(
+            project_id="",  # Empty
+            job_id="proj_123-brand-0",
+            batch_size=50,
+            success_count=48,
+            error_count=2,
+        )
+
+        with pytest.raises(RabbitMQPublisherError) as exc_info:
+            await publisher.publish_analyze_result(payload)
+
+        assert "project_id is required" in str(exc_info.value)
+        mock_exchange.publish.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_publish_analyze_result_none_project_id_in_dict_rejected(
+        self, mock_channel, mock_exchange
+    ):
+        """Test publishing dict with None project_id raises error."""
+        mock_channel.declare_exchange.return_value = mock_exchange
+
+        publisher = RabbitMQPublisher(channel=mock_channel)
+        await publisher.setup()
+
+        msg_dict = {
+            "project_id": None,
+            "job_id": "proj_123-brand-0",
+            "task_type": "analyze_result",
+            "batch_size": 50,
+            "success_count": 48,
+            "error_count": 2,
+        }
+
+        with pytest.raises(RabbitMQPublisherError) as exc_info:
+            await publisher.publish_analyze_result(msg_dict)
+
+        assert "project_id is required" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_publish_analyze_result_invalid_type(self, mock_channel, mock_exchange):
@@ -249,7 +306,7 @@ class TestRabbitMQPublisherPublishAnalyzeResult:
         publisher = RabbitMQPublisher(channel=mock_channel)
         await publisher.setup()
 
-        msg = create_success_result(
+        payload = create_success_result(
             project_id="proj_123",
             job_id="proj_123-brand-0",
             batch_size=50,
@@ -258,4 +315,38 @@ class TestRabbitMQPublisherPublishAnalyzeResult:
         )
 
         with pytest.raises(RabbitMQPublisherError):
-            await publisher.publish_analyze_result(msg)
+            await publisher.publish_analyze_result(payload)
+
+    @pytest.mark.asyncio
+    async def test_publish_error_result_flat(self, mock_channel, mock_exchange):
+        """Test publishing error result produces flat JSON."""
+        mock_channel.declare_exchange.return_value = mock_exchange
+
+        publisher = RabbitMQPublisher(channel=mock_channel)
+        await publisher.setup()
+
+        payload = create_error_result(
+            project_id="proj_123",
+            job_id="proj_123-brand-0",
+            batch_size=50,
+            error_message="MinIO fetch failed",
+        )
+
+        await publisher.publish_analyze_result(payload)
+
+        mock_exchange.publish.assert_called_once()
+        call_args = mock_exchange.publish.call_args
+        published_body = call_args[0][0].body
+        parsed = json.loads(published_body.decode("utf-8"))
+
+        # Verify flat format
+        assert parsed == {
+            "project_id": "proj_123",
+            "job_id": "proj_123-brand-0",
+            "task_type": "analyze_result",
+            "batch_size": 50,
+            "success_count": 0,
+            "error_count": 50,
+        }
+        # No errors array in output
+        assert "errors" not in parsed

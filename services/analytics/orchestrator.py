@@ -371,12 +371,28 @@ class AnalyticsOrchestrator:
             Dictionary with crawler metadata fields (only non-None values)
         """
         crawler_fields = [
+            # Batch context
             "job_id",
             "batch_index",
             "task_type",
             "keyword_source",
             "crawled_at",
             "pipeline_version",
+            # NEW: Brand/Keyword (Contract v2.0)
+            "brand_name",
+            "keyword",
+            # NEW: Content fields (Contract v2.0)
+            "content_text",
+            "content_transcription",
+            "media_duration",
+            "hashtags",
+            "permalink",
+            # NEW: Author fields (Contract v2.0)
+            "author_id",
+            "author_name",
+            "author_username",
+            "author_avatar_url",
+            "author_is_verified",
         ]
 
         result = {}

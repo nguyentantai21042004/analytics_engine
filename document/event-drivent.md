@@ -69,7 +69,7 @@ Batch processing (50 posts/batch for TikTok, 20 for YouTube) provides:
 - **86% cost reduction** ($4,044/year savings on AWS)
 - **Better reliability** (fewer network round-trips, bulk database operations)
 
-See [Batch Processing Rationale](batch-processing-rationale.md) for detailed technical analysis.
+Batch sizes: 50 posts/batch for TikTok, 20 for YouTube.
 
 ---
 
