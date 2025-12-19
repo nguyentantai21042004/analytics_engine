@@ -1,544 +1,781 @@
-# Analytics Engine - Chi Tiết Các Fields và Cơ Chế Tính Toán
+# Analytics Engine API Documentation
 
-## Tổng quan
+REST API để truy vấn dữ liệu phân tích social media.
 
-Document này mô tả chi tiết ý nghĩa, công thức tính toán, và các giá trị có thể có của từng field trong hệ thống analytics. Tất cả dữ liệu được lưu trong bảng `post_analytics` và `crawl_errors` trong PostgreSQL.
+**Base URL:** `/`  
+**Version:** v1  
+**Swagger UI:** `/swagger/index.html`
 
 ---
 
-## 1. Bảng `post_analytics` - Kết Quả Phân Tích Bài Viết
+## Mục lục
 
-### 1.1. Identifiers và Metadata
+1. [Posts API](#1-posts-api)
+2. [Summary API](#2-summary-api)
+3. [Trends API](#3-trends-api)
+4. [Keywords API](#4-keywords-api)
+5. [Alerts API](#5-alerts-api)
+6. [Errors API](#6-errors-api)
+7. [Health API](#7-health-api)
+8. [Common Schemas](#8-common-schemas)
 
-| Field        | Kiểu dữ liệu | Ý nghĩa                         | Nguồn tính toán  | Giá trị có thể                               |
-| ------------ | ------------ | ------------------------------- | ---------------- | -------------------------------------------- |
-| `id`         | `String(50)` | ID duy nhất của bài viết        | Crawler cung cấp | Bất kỳ string ≤ 50 ký tự                     |
-| `project_id` | `UUID`       | ID dự án (nullable cho dry-run) | Crawler metadata | UUID hoặc NULL                               |
-| `platform`   | `String(20)` | Nền tảng mạng xã hội            | Crawler metadata | "tiktok", "facebook", "youtube", "instagram" |
+---
 
-### 1.2. Timestamps
+## 1. Posts API
 
-| Field          | Kiểu dữ liệu | Ý nghĩa                    | Nguồn tính toán              | Giá trị có thể      |
-| -------------- | ------------ | -------------------------- | ---------------------------- | ------------------- |
-| `published_at` | `TIMESTAMP`  | Thời gian đăng bài gốc     | Crawler metadata             | Timestamp hợp lệ    |
-| `analyzed_at`  | `TIMESTAMP`  | Thời gian xử lý analytics  | `datetime.now(timezone.utc)` | Timestamp tự động   |
-| `crawled_at`   | `TIMESTAMP`  | Thời gian crawler thu thập | Crawler metadata             | Timestamp hoặc NULL |
+### 1.1 GET /posts
 
-### 1.3. Sentiment Analysis (Phân Tích Cảm Xúc)
+Lấy danh sách bài viết đã phân tích với phân trang, lọc và sắp xếp.
 
-#### Overall Sentiment (Cảm xúc tổng thể)
+#### Request Parameters
 
-| Field                     | Kiểu dữ liệu | Ý nghĩa                     | Công thức tính toán            | Giá trị có thể                                                                                      |
-| ------------------------- | ------------ | --------------------------- | ------------------------------ | --------------------------------------------------------------------------------------------------- |
-| `overall_sentiment`       | `String(10)` | Nhãn cảm xúc tổng thể       | PhoBERT model + thresholds     | "POSITIVE", "NEGATIVE", "NEUTRAL"                                                                   |
-| `overall_sentiment_score` | `Float`      | Điểm cảm xúc số (-1 đến +1) | 5-class rating → score mapping | -1.0 ≤ score ≤ 1.0                                                                                  |
-| `overall_confidence`      | `Float`      | Độ tin cậy của prediction   | `max(probabilities)`           | 0.0 ≤ confidence ≤ 1.0                                                                              |
-| `sentiment_probabilities` | `JSONB`      | Phân phối xác suất đầy đủ   | PhoBERT softmax output         | `{"VERY_NEGATIVE": 0.01, "NEGATIVE": 0.05, "NEUTRAL": 0.1, "POSITIVE": 0.2, "VERY_POSITIVE": 0.64}` |
+| Parameter    | Type     | Required | Default       | Description                                          |
+| ------------ | -------- | -------- | ------------- | ---------------------------------------------------- |
+| `project_id` | UUID     | ✅       | -             | ID của project                                       |
+| `brand_name` | string   | ❌       | null          | Lọc theo tên thương hiệu                             |
+| `keyword`    | string   | ❌       | null          | Lọc theo từ khóa                                     |
+| `platform`   | string   | ❌       | null          | Lọc theo nền tảng (facebook, tiktok, youtube...)     |
+| `sentiment`  | string   | ❌       | null          | Lọc theo sentiment (POSITIVE, NEUTRAL, NEGATIVE)     |
+| `risk_level` | string   | ❌       | null          | Lọc theo mức độ rủi ro (LOW, MEDIUM, HIGH, CRITICAL) |
+| `intent`     | string   | ❌       | null          | Lọc theo intent                                      |
+| `is_viral`   | boolean  | ❌       | null          | Lọc bài viral                                        |
+| `is_kol`     | boolean  | ❌       | null          | Lọc bài từ KOL                                       |
+| `from_date`  | datetime | ❌       | null          | Ngày bắt đầu (inclusive)                             |
+| `to_date`    | datetime | ❌       | null          | Ngày kết thúc (inclusive)                            |
+| `sort_by`    | string   | ❌       | "analyzed_at" | Cột sắp xếp                                          |
+| `sort_order` | string   | ❌       | "desc"        | Thứ tự sắp xếp (asc/desc)                            |
+| `page`       | int      | ❌       | 1             | Số trang (1-based)                                   |
+| `page_size`  | int      | ❌       | 20            | Số item mỗi trang (1-100)                            |
 
-**Chi tiết tính toán Overall Sentiment:**
-
-1. **PhoBERT 3-class mapping:**
-
-   - Index 0 (NEG) → Rating 1 → Score -1.0
-   - Index 1 (POS) → Rating 5 → Score +1.0
-   - Index 2 (NEU) → Rating 3 → Score 0.0
-
-2. **Label assignment:**
-   ```python
-   if score > 0.25: return "POSITIVE"
-   elif score < -0.25: return "NEGATIVE"
-   else: return "NEUTRAL"
-   ```
-
-#### Aspect-Based Sentiment (Cảm xúc theo khía cạnh)
-
-| Field               | Kiểu dữ liệu | Ý nghĩa                          | Công thức tính toán                  | Giá trị có thể        |
-| ------------------- | ------------ | -------------------------------- | ------------------------------------ | --------------------- |
-| `aspects_breakdown` | `JSONB`      | Phân tích cảm xúc theo khía cạnh | Context windowing + weighted average | Xem chi tiết bên dưới |
-
-**Cấu trúc `aspects_breakdown`:**
+#### Response
 
 ```json
 {
-  "DESIGN": {
-    "sentiment": "POSITIVE",
-    "score": 0.8,
-    "confidence": 0.92,
-    "mentions": 3
-  },
-  "PERFORMANCE": {
-    "sentiment": "NEGATIVE",
-    "score": -0.6,
-    "confidence": 0.87,
-    "mentions": 2
-  },
-  "PRICE": { ... },
-  "SERVICE": { ... },
-  "GENERAL": { ... }
-}
-```
-
-**Khía cạnh (Aspects) có thể:**
-
-- **DESIGN**: Ngoại hình, thiết kế, màu sắc
-- **PERFORMANCE**: Pin, sạc, tốc độ, kỹ thuật
-- **PRICE**: Giá cả, giá trị, khả năng chi trả
-- **SERVICE**: Dịch vụ khách hàng, bảo hành, hỗ trợ
-- **GENERAL**: Các khía cạnh chung khác
-
-**Thuật toán Context Windowing:**
-
-1. Tạo context window ±30 ký tự quanh keyword
-2. Cắt tại dấu câu [".", ",", "!", "?"] hoặc từ chuyển tiếp ["nhưng", "tuy nhiên"]
-3. Snap to word boundaries để tránh cắt từ
-4. Fallback về full text nếu context quá ngắn
-
-**Weighted Aggregation cho nhiều mentions:**
-
-```python
-avg_score = Σ(score_i × confidence_i) / Σ(confidence_i)
-avg_confidence = total_confidence / num_mentions
-```
-
-### 1.4. Intent Classification (Phân Loại Ý Định)
-
-| Field               | Kiểu dữ liệu | Ý nghĩa                     | Công thức tính toán                          | Giá trị có thể           |
-| ------------------- | ------------ | --------------------------- | -------------------------------------------- | ------------------------ |
-| `primary_intent`    | `String(20)` | Ý định chính của bài viết   | Regex pattern matching + priority resolution | Xem bảng Intent bên dưới |
-| `intent_confidence` | `Float`      | Độ tin cậy phân loại ý định | `min(0.5 + (num_matches * 0.1), 1.0)`        | 0.5 ≤ confidence ≤ 1.0   |
-
-**Intent Categories và Priorities:**
-
-| Intent         | Priority | Ý nghĩa                 | Pattern examples              | Action          |
-| -------------- | -------- | ----------------------- | ----------------------------- | --------------- |
-| **CRISIS**     | 10       | Khủng hoảng thương hiệu | "tẩy chay", "lừa đảo", "scam" | Alert + Process |
-| **SEEDING**    | 9        | Spam marketing ẩn       | Phone numbers, native ads     | **SKIP AI**     |
-| **SPAM**       | 8        | Rác quảng cáo rõ ràng   | "vay tiền", "bán sim"         | **SKIP AI**     |
-| **COMPLAINT**  | 7        | Khiếu nại khách hàng    | "kém chất lượng", "thất vọng" | Flag + Process  |
-| **LEAD**       | 5        | Cơ hội bán hàng         | "muốn mua", "ở đâu bán"       | Flag + Process  |
-| **SUPPORT**    | 4        | Hỗ trợ kỹ thuật         | "làm sao để", "hướng dẫn"     | Flag + Process  |
-| **DISCUSSION** | 1        | Thảo luận bình thường   | Default                       | Process         |
-
-**Priority Resolution:**
-
-```python
-best_intent = max(matched_intents, key=lambda i: i.priority)
-confidence = min(0.5 + (num_pattern_matches * 0.1), 1.0)
-```
-
-### 1.5. Impact Calculation (Tính Điểm Tác Động)
-
-#### Core Impact Fields
-
-| Field          | Kiểu dữ liệu | Ý nghĩa                 | Công thức tính toán                   | Giá trị có thể                      |
-| -------------- | ------------ | ----------------------- | ------------------------------------- | ----------------------------------- |
-| `impact_score` | `Float`      | Điểm tác động chuẩn hóa | Xem công thức chi tiết bên dưới       | 0.0 ≤ score ≤ 100.0                 |
-| `risk_level`   | `String(10)` | Mức độ rủi ro           | Impact score + sentiment + KOL status | "CRITICAL", "HIGH", "MEDIUM", "LOW" |
-| `is_viral`     | `Boolean`    | Có viral không          | `impact_score >= 70.0`                | true/false                          |
-| `is_kol`       | `Boolean`    | Có phải KOL không       | `follower_count >= 50000`             | true/false                          |
-
-**Công thức Impact Score:**
-
-```python
-# 1. Engagement Score
-engagement_score = (
-    views * 0.01 +
-    likes * 1.0 +
-    comments * 2.0 +
-    saves * 3.0 +
-    shares * 5.0
-)
-
-# 2. Reach Score
-reach_score = log10(followers + 1)
-if is_verified:
-    reach_score *= 1.2
-
-# 3. Platform Multiplier
-platform_multipliers = {
-    "tiktok": 1.0,
-    "facebook": 1.2,
-    "youtube": 1.5,
-    "instagram": 1.1
-}
-
-# 4. Sentiment Amplifier
-sentiment_amplifiers = {
-    "NEGATIVE": 1.5,
-    "NEUTRAL": 1.0,
-    "POSITIVE": 1.1
-}
-
-# 5. Raw Impact
-raw_impact = (
-    engagement_score *
-    reach_score *
-    platform_multipliers[platform] *
-    sentiment_amplifiers[sentiment]
-)
-
-# 6. Normalized Impact Score (0-100)
-impact_score = min(100.0, (raw_impact / MAX_RAW_SCORE_CEILING) * 100.0)
-```
-
-**Risk Level Matrix:**
-
-| Conditions                                                             | Risk Level   | Ý nghĩa                                |
-| ---------------------------------------------------------------------- | ------------ | -------------------------------------- |
-| `impact_score >= 70 AND sentiment == "NEGATIVE" AND is_kol == true`    | **CRITICAL** | Cao tác động + tiêu cực + KOL          |
-| `impact_score >= 70 AND sentiment == "NEGATIVE" AND is_kol == false`   | **HIGH**     | Cao tác động + tiêu cực + người thường |
-| `impact_score >= 40 AND impact_score < 70 AND sentiment == "NEGATIVE"` | **MEDIUM**   | Trung bình tác động + tiêu cực         |
-| `impact_score >= 60 AND sentiment IN ["NEUTRAL", "POSITIVE"]`          | **MEDIUM**   | Cao tác động + tích cực/trung tính     |
-| All other cases                                                        | **LOW**      | Các trường hợp còn lại                 |
-
-#### Impact Breakdown Details
-
-| Field              | Kiểu dữ liệu | Ý nghĩa                   | Giá trị có thể        |
-| ------------------ | ------------ | ------------------------- | --------------------- |
-| `impact_breakdown` | `JSONB`      | Chi tiết tính toán impact | Xem cấu trúc bên dưới |
-
-**Cấu trúc `impact_breakdown`:**
-
-```json
-{
-  "engagement_score": 850.5,
-  "reach_score": 5.2,
-  "platform_multiplier": 1.0,
-  "sentiment_amplifier": 1.5,
-  "raw_impact": 6606.9,
-  "is_viral": true,
-  "is_kol": false,
-  "viral_threshold": 70.0,
-  "kol_threshold": 50000
-}
-```
-
-### 1.6. Keyword Extraction (Trích Xuất Từ Khóa)
-
-| Field      | Kiểu dữ liệu | Ý nghĩa                        | Công thức tính toán                 | Giá trị có thể        |
-| ---------- | ------------ | ------------------------------ | ----------------------------------- | --------------------- |
-| `keywords` | `JSONB`      | Danh sách từ khóa và khía cạnh | Hybrid extraction (Dictionary + AI) | Xem cấu trúc bên dưới |
-
-**Cấu trúc `keywords`:**
-
-```json
-{
-  "extracted": [
+  "success": true,
+  "data": [
     {
-      "keyword": "thiết kế",
-      "aspect": "DESIGN",
-      "score": 1.0,
-      "source": "DICT",
-      "rank": 1
-    },
-    {
-      "keyword": "pin",
-      "aspect": "PERFORMANCE",
-      "score": 0.85,
-      "source": "AI",
-      "rank": 2
+      "id": "string",
+      "platform": "string",
+      "permalink": "string | null",
+      "content_text": "string | null (max 300 chars)",
+      "author_name": "string | null",
+      "author_username": "string | null",
+      "author_is_verified": "boolean | null",
+      "overall_sentiment": "POSITIVE | NEUTRAL | NEGATIVE",
+      "overall_sentiment_score": "float (-1 to 1)",
+      "primary_intent": "string",
+      "impact_score": "float (0-100)",
+      "risk_level": "LOW | MEDIUM | HIGH | CRITICAL",
+      "is_viral": "boolean",
+      "is_kol": "boolean",
+      "view_count": "int",
+      "like_count": "int",
+      "comment_count": "int",
+      "published_at": "datetime (ISO 8601)",
+      "analyzed_at": "datetime (ISO 8601)",
+      "brand_name": "string | null",
+      "keyword": "string | null",
+      "job_id": "string | null"
     }
   ],
-  "metadata": {
-    "extraction_time": 0.123,
-    "total_candidates": 45,
-    "dict_matches": 3,
-    "ai_matches": 12
+  "meta": {
+    "page": "int",
+    "page_size": "int",
+    "total_items": "int",
+    "total_pages": "int",
+    "has_next": "boolean",
+    "has_prev": "boolean"
   }
 }
 ```
 
-**Hybrid Extraction Process:**
+#### Response Fields Description
 
-1. **Dictionary Matching** (O(1) lookup):
-
-   - Score: `1.0` (perfect match)
-   - Source: `"DICT"`
-   - Ưu tiên cao nhất
-
-2. **AI Discovery** (nếu dict_matches < 5):
-
-   - Sử dụng SpaCy + YAKE
-   - Score: `1.0 - yake_score`
-   - Source: `"AI"`
-
-3. **Aspect Mapping:**
-   - Exact match trong dictionary → aspect tương ứng
-   - Substring match → aspect tương ứng
-   - Không match → `"GENERAL"`
-
-### 1.7. Raw Engagement Metrics (Số Liệu Tương Tác Gốc)
-
-| Field            | Kiểu dữ liệu | Ý nghĩa                  | Nguồn        | Giá trị có thể         |
-| ---------------- | ------------ | ------------------------ | ------------ | ---------------------- |
-| `view_count`     | `Integer`    | Số lượt xem              | Crawler data | 0 ≤ views ≤ 2^31-1     |
-| `like_count`     | `Integer`    | Số lượt thích            | Crawler data | 0 ≤ likes ≤ 2^31-1     |
-| `comment_count`  | `Integer`    | Số bình luận             | Crawler data | 0 ≤ comments ≤ 2^31-1  |
-| `share_count`    | `Integer`    | Số lượt chia sẻ          | Crawler data | 0 ≤ shares ≤ 2^31-1    |
-| `save_count`     | `Integer`    | Số lượt lưu              | Crawler data | 0 ≤ saves ≤ 2^31-1     |
-| `follower_count` | `Integer`    | Số người theo dõi author | Crawler data | 0 ≤ followers ≤ 2^31-1 |
-
-### 1.8. Processing Metadata (Metadata Xử Lý)
-
-| Field                | Kiểu dữ liệu | Ý nghĩa                        | Nguồn tính toán          | Giá trị có thể    |
-| -------------------- | ------------ | ------------------------------ | ------------------------ | ----------------- |
-| `processing_time_ms` | `Integer`    | Thời gian xử lý (milliseconds) | Timer trong orchestrator | 0 ≤ time ≤ 2^31-1 |
-| `model_version`      | `String(50)` | Version của PhoBERT model      | Model metadata           | String ≤ 50 chars |
-| `pipeline_version`   | `String(50)` | Version của analytics pipeline | Application version      | String ≤ 50 chars |
-
-### 1.9. Batch và Job Context
-
-| Field            | Kiểu dữ liệu  | Ý nghĩa                | Nguồn         | Giá trị có thể               |
-| ---------------- | ------------- | ---------------------- | ------------- | ---------------------------- |
-| `job_id`         | `String(100)` | ID của crawler job     | Crawler event | String ≤ 100 chars hoặc NULL |
-| `batch_index`    | `Integer`     | Thứ tự batch trong job | Crawler event | 0 ≤ index ≤ 2^31-1 hoặc NULL |
-| `task_type`      | `String(30)`  | Loại task crawler      | Crawler event | "research_and_crawl", etc.   |
-| `keyword_source` | `String(200)` | Keyword gốc để crawl   | Crawler event | String ≤ 200 chars           |
-
-### 1.10. Error Tracking (Theo Dõi Lỗi)
-
-| Field           | Kiểu dữ liệu | Ý nghĩa             | Nguồn          | Giá trị có thể                          |
-| --------------- | ------------ | ------------------- | -------------- | --------------------------------------- |
-| `fetch_status`  | `String(10)` | Trạng thái crawl    | Crawler result | "success", "error", "partial"           |
-| `fetch_error`   | `Text`       | Thông báo lỗi ngắn  | Crawler error  | Text hoặc NULL                          |
-| `error_code`    | `String(50)` | Mã lỗi chuẩn        | Crawler error  | "RATE_LIMITED", "CONTENT_REMOVED", etc. |
-| `error_details` | `JSONB`      | Chi tiết lỗi đầy đủ | Crawler error  | JSON object hoặc NULL                   |
+| Field                     | Type     | Description                                        |
+| ------------------------- | -------- | -------------------------------------------------- |
+| `id`                      | string   | ID duy nhất của bài viết                           |
+| `platform`                | string   | Nền tảng (facebook, tiktok, youtube, instagram...) |
+| `permalink`               | string   | Link trực tiếp đến bài viết gốc                    |
+| `content_text`            | string   | Nội dung bài viết (cắt ngắn 300 ký tự)             |
+| `author_name`             | string   | Tên hiển thị của tác giả                           |
+| `author_username`         | string   | Username của tác giả                               |
+| `author_is_verified`      | boolean  | Tài khoản đã xác minh                              |
+| `overall_sentiment`       | string   | Sentiment tổng thể                                 |
+| `overall_sentiment_score` | float    | Điểm sentiment (-1 đến 1)                          |
+| `primary_intent`          | string   | Intent chính của bài viết                          |
+| `impact_score`            | float    | Điểm ảnh hưởng (0-100)                             |
+| `risk_level`              | string   | Mức độ rủi ro                                      |
+| `is_viral`                | boolean  | Bài viết có viral không                            |
+| `is_kol`                  | boolean  | Bài viết từ KOL không                              |
+| `view_count`              | int      | Số lượt xem                                        |
+| `like_count`              | int      | Số lượt thích                                      |
+| `comment_count`           | int      | Số bình luận                                       |
+| `published_at`            | datetime | Thời gian đăng bài                                 |
+| `analyzed_at`             | datetime | Thời gian phân tích                                |
+| `brand_name`              | string   | Tên thương hiệu liên quan                          |
+| `keyword`                 | string   | Từ khóa tìm kiếm                                   |
+| `job_id`                  | string   | ID của job crawl                                   |
 
 ---
 
-## 2. Bảng `crawl_errors` - Lỗi Crawler Chi Tiết
+### 1.2 GET /posts/all
 
-### 2.1. Identifiers
+Lấy tất cả bài viết không phân trang. Dùng cho export hoặc khi cần toàn bộ dữ liệu.
 
-| Field        | Kiểu dữ liệu  | Ý nghĩa               | Constraints    | Giá trị có thể             |
-| ------------ | ------------- | --------------------- | -------------- | -------------------------- |
-| `id`         | `Integer`     | Primary key tự tăng   | AUTO_INCREMENT | 1, 2, 3, ...               |
-| `content_id` | `String(50)`  | ID của content bị lỗi | NOT NULL       | String ≤ 50 chars          |
-| `project_id` | `UUID`        | ID dự án              | NULLABLE       | UUID hoặc NULL             |
-| `job_id`     | `String(100)` | ID của crawler job    | NOT NULL       | String ≤ 100 chars         |
-| `platform`   | `String(20)`  | Nền tảng              | NOT NULL       | "tiktok", "facebook", etc. |
+#### Request Parameters
 
-### 2.2. Error Classification
+| Parameter    | Type     | Required | Default       | Description               |
+| ------------ | -------- | -------- | ------------- | ------------------------- |
+| `project_id` | UUID     | ✅       | -             | ID của project            |
+| `brand_name` | string   | ❌       | null          | Lọc theo tên thương hiệu  |
+| `keyword`    | string   | ❌       | null          | Lọc theo từ khóa          |
+| `platform`   | string   | ❌       | null          | Lọc theo nền tảng         |
+| `sentiment`  | string   | ❌       | null          | Lọc theo sentiment        |
+| `risk_level` | string   | ❌       | null          | Lọc theo mức độ rủi ro    |
+| `intent`     | string   | ❌       | null          | Lọc theo intent           |
+| `is_viral`   | boolean  | ❌       | null          | Lọc bài viral             |
+| `is_kol`     | boolean  | ❌       | null          | Lọc bài từ KOL            |
+| `from_date`  | datetime | ❌       | null          | Ngày bắt đầu              |
+| `to_date`    | datetime | ❌       | null          | Ngày kết thúc             |
+| `sort_by`    | string   | ❌       | "analyzed_at" | Cột sắp xếp               |
+| `sort_order` | string   | ❌       | "desc"        | Thứ tự sắp xếp            |
+| `limit`      | int      | ❌       | 1000          | Số lượng tối đa (1-10000) |
 
-| Field            | Kiểu dữ liệu | Ý nghĩa                | Constraints | Giá trị có thể            |
-| ---------------- | ------------ | ---------------------- | ----------- | ------------------------- |
-| `error_code`     | `String(50)` | Mã lỗi chuẩn           | NOT NULL    | Xem bảng Error Codes      |
-| `error_category` | `String(30)` | Nhóm lỗi               | NOT NULL    | Xem bảng Error Categories |
-| `error_message`  | `Text`       | Thông báo lỗi chi tiết | NULLABLE    | Text message              |
-| `error_details`  | `JSONB`      | Metadata lỗi           | NULLABLE    | JSON object               |
+#### Response
 
-**Error Categories:**
-
-| Category          | Ý nghĩa           | Error Codes                                               |
-| ----------------- | ----------------- | --------------------------------------------------------- |
-| **Rate Limiting** | Giới hạn tần suất | `RATE_LIMITED`, `AUTH_FAILED`, `ACCESS_DENIED`            |
-| **Content**       | Vấn đề nội dung   | `CONTENT_REMOVED`, `CONTENT_NOT_FOUND`, `PRIVATE_ACCOUNT` |
-| **Network**       | Lỗi mạng          | `NETWORK_ERROR`, `TIMEOUT`, `DNS_ERROR`                   |
-| **Parsing**       | Lỗi phân tích     | `PARSE_ERROR`, `INVALID_URL`, `STRUCTURE_CHANGED`         |
-
-### 2.3. References và Timestamps
-
-| Field        | Kiểu dữ liệu | Ý nghĩa             | Constraints   | Giá trị có thể |
-| ------------ | ------------ | ------------------- | ------------- | -------------- |
-| `permalink`  | `Text`       | URL gốc của content | NULLABLE      | Valid URL      |
-| `created_at` | `TIMESTAMP`  | Thời gian ghi lỗi   | DEFAULT NOW() | Timestamp      |
-
----
-
-## 3. Text Preprocessing Fields
-
-### 3.1. Content Merging Priority
-
-**Thứ tự ưu tiên merge content:**
-
-1. **Transcription** (cao nhất) - Transcript video/audio
-2. **Caption** (trung bình) - Mô tả bài viết
-3. **Top Comments** (thấp nhất) - Comments có nhiều like
-
-**Formula:**
-
-```python
-merged_text = ". ".join([
-    transcription if transcription else "",
-    caption if caption else "",
-    ". ".join(sorted_top_comments)
-]).strip(". ")
+```json
+{
+  "success": true,
+  "data": [PostListItem],
+  "meta": {
+    "total": "int"
+  }
+}
 ```
 
-### 3.2. Normalization Steps
+---
 
-**Vietnamese Teencode/Slang Mapping (58 entries):**
+### 1.3 GET /posts/{post_id}
 
-- "ko" → "không"
-- "dc" → "được"
-- "vkl" → "rất"
-- "vcl" → "quá"
-- "tks" → "cảm ơn"
-- "tqt" → "quá trình"
-- etc.
+Lấy chi tiết đầy đủ của một bài viết theo ID, bao gồm comments.
 
-**Regex Patterns:**
+#### Path Parameters
 
-- **URLs**: `r"(?:http[s]?://|www\.)(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+"`
-- **Vietnamese Phone**: `r"(03|05|07|08|09|01[2689])\d{8}"`
-- **Hashtags**: `r"#(\w+)"` → `r"\1"`
+| Parameter | Type   | Required | Description     |
+| --------- | ------ | -------- | --------------- |
+| `post_id` | string | ✅       | ID của bài viết |
 
-### 3.3. Quality Statistics
+#### Response
 
-| Statistic           | Công thức                       | Ý nghĩa               | Ngưỡng     |
-| ------------------- | ------------------------------- | --------------------- | ---------- |
-| `total_length`      | `len(clean_text)`               | Độ dài text sau clean | -          |
-| `is_too_short`      | `length < min_text_length`      | Text quá ngắn         | 10 chars   |
-| `hashtag_ratio`     | `hashtag_count / word_count`    | Tỷ lệ hashtag         | 0.0-1.0    |
-| `reduction_ratio`   | `(original - clean) / original` | Tỷ lệ thu gọn         | 0.0-1.0    |
-| `has_transcription` | `bool(transcription)`           | Có transcript không   | true/false |
-| `has_phone`         | `bool(phone_pattern.search())`  | Có số điện thoại      | true/false |
-| `has_spam_keyword`  | `bool(spam_patterns.search())`  | Có từ khóa spam       | true/false |
+```json
+{
+  "success": true,
+  "data": {
+    "id": "string",
+    "platform": "string",
+    "permalink": "string | null",
+    "content_text": "string | null",
+    "content_transcription": "string | null",
+    "hashtags": ["string"] | null,
+    "media_duration": "int | null (seconds)",
+    "author_id": "string | null",
+    "author_name": "string | null",
+    "author_username": "string | null",
+    "author_avatar_url": "string | null",
+    "author_is_verified": "boolean | null",
+    "follower_count": "int",
+    "overall_sentiment": "string",
+    "overall_sentiment_score": "float",
+    "overall_confidence": "float",
+    "sentiment_probabilities": {
+      "POSITIVE": "float",
+      "NEUTRAL": "float",
+      "NEGATIVE": "float"
+    } | null,
+    "primary_intent": "string",
+    "intent_confidence": "float",
+    "impact_score": "float",
+    "risk_level": "string",
+    "is_viral": "boolean",
+    "is_kol": "boolean",
+    "impact_breakdown": {
+      "engagement_score": "float",
+      "reach_score": "float",
+      "platform_multiplier": "float",
+      "sentiment_amplifier": "float",
+      "raw_impact": "float"
+    } | null,
+    "aspects_breakdown": {
+      "[aspect_name]": {
+        "sentiment": "string",
+        "score": "float",
+        "confidence": "float",
+        "keywords": ["string"]
+      }
+    } | null,
+    "keywords": [
+      {
+        "keyword": "string",
+        "aspect": "string",
+        "sentiment": "string",
+        "score": "float"
+      }
+    ] | null,
+    "view_count": "int",
+    "like_count": "int",
+    "comment_count": "int",
+    "share_count": "int",
+    "save_count": "int",
+    "published_at": "datetime",
+    "analyzed_at": "datetime",
+    "crawled_at": "datetime | null",
+    "brand_name": "string | null",
+    "keyword": "string | null",
+    "job_id": "string | null",
+    "comments": [
+      {
+        "id": "int",
+        "comment_id": "string | null",
+        "text": "string",
+        "author_name": "string | null",
+        "likes": "int | null",
+        "sentiment": "string | null",
+        "sentiment_score": "float | null",
+        "commented_at": "datetime | null"
+      }
+    ],
+    "comments_total": "int"
+  }
+}
+```
 
-**Spam Keywords:**
+#### Response Fields Description (Chi tiết bổ sung)
 
-- "vay vốn", "lãi suất", "giải ngân"
-- "bán sim", "tuyển dụng"
-- "nhận tiền", "kiếm tiền"
+| Field                     | Type     | Description                             |
+| ------------------------- | -------- | --------------------------------------- |
+| `content_transcription`   | string   | Nội dung transcript từ video/audio      |
+| `hashtags`                | array    | Danh sách hashtag trong bài             |
+| `media_duration`          | int      | Thời lượng media (giây)                 |
+| `follower_count`          | int      | Số follower của tác giả                 |
+| `overall_confidence`      | float    | Độ tin cậy của phân tích sentiment      |
+| `sentiment_probabilities` | object   | Xác suất cho từng loại sentiment        |
+| `intent_confidence`       | float    | Độ tin cậy của phân tích intent         |
+| `impact_breakdown`        | object   | Chi tiết cách tính impact score         |
+| `aspects_breakdown`       | object   | Phân tích sentiment theo từng khía cạnh |
+| `keywords`                | array    | Danh sách từ khóa được trích xuất       |
+| `share_count`             | int      | Số lượt chia sẻ                         |
+| `save_count`              | int      | Số lượt lưu                             |
+| `crawled_at`              | datetime | Thời gian crawl dữ liệu                 |
+| `comments`                | array    | Danh sách bình luận                     |
+| `comments_total`          | int      | Tổng số bình luận                       |
 
 ---
 
-## 4. Configuration và Constants
+## 2. Summary API
 
-### 4.1. Environment Variables
+### 2.1 GET /summary
 
-| Variable                      | Default | Ý nghĩa                           | Ảnh hưởng đến fields |
-| ----------------------------- | ------- | --------------------------------- | -------------------- |
-| `CONTEXT_WINDOW_SIZE`         | 30      | Kích thước context window (chars) | `aspects_breakdown`  |
-| `THRESHOLD_POSITIVE`          | 0.25    | Ngưỡng sentiment POSITIVE         | `overall_sentiment`  |
-| `THRESHOLD_NEGATIVE`          | -0.25   | Ngưỡng sentiment NEGATIVE         | `overall_sentiment`  |
-| `MAX_KEYWORDS`                | 30      | Số lượng keywords tối đa          | `keywords.extracted` |
-| `INTENT_CONFIDENCE_THRESHOLD` | 0.5     | Ngưỡng tin cậy intent tối thiểu   | `intent_confidence`  |
+Lấy thống kê tổng hợp cho dashboard overview.
 
-### 4.2. Model Constants
+#### Request Parameters
 
-| Constant                | Value                                        | Ý nghĩa                      |
-| ----------------------- | -------------------------------------------- | ---------------------------- |
-| `SENTIMENT_MAP`         | `{0: 1, 1: 5, 2: 3}`                         | PhoBERT class → rating       |
-| `SCORE_MAP`             | `{1: -1.0, 2: -0.5, 3: 0.0, 4: 0.5, 5: 1.0}` | Rating → sentiment score     |
-| `MAX_RAW_SCORE_CEILING` | Calculated dynamically                       | Chuẩn hóa impact score       |
-| `KOL_THRESHOLD`         | 50000                                        | Ngưỡng followers để là KOL   |
-| `VIRAL_THRESHOLD`       | 70.0                                         | Ngưỡng impact score để viral |
+| Parameter    | Type     | Required | Default | Description              |
+| ------------ | -------- | -------- | ------- | ------------------------ |
+| `project_id` | UUID     | ✅       | -       | ID của project           |
+| `brand_name` | string   | ❌       | null    | Lọc theo tên thương hiệu |
+| `keyword`    | string   | ❌       | null    | Lọc theo từ khóa         |
+| `from_date`  | datetime | ❌       | null    | Ngày bắt đầu             |
+| `to_date`    | datetime | ❌       | null    | Ngày kết thúc            |
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "total_posts": "int",
+    "total_comments": "int",
+    "sentiment_distribution": {
+      "POSITIVE": "int",
+      "NEUTRAL": "int",
+      "NEGATIVE": "int"
+    },
+    "avg_sentiment_score": "float",
+    "risk_distribution": {
+      "LOW": "int",
+      "MEDIUM": "int",
+      "HIGH": "int",
+      "CRITICAL": "int"
+    },
+    "intent_distribution": {
+      "[intent_name]": "int"
+    },
+    "platform_distribution": {
+      "[platform_name]": "int"
+    },
+    "engagement_totals": {
+      "views": "int",
+      "likes": "int",
+      "comments": "int",
+      "shares": "int",
+      "saves": "int"
+    },
+    "viral_count": "int",
+    "kol_count": "int",
+    "avg_impact_score": "float"
+  }
+}
+```
+
+#### Response Fields Description
+
+| Field                    | Type   | Description                         |
+| ------------------------ | ------ | ----------------------------------- |
+| `total_posts`            | int    | Tổng số bài viết                    |
+| `total_comments`         | int    | Tổng số bình luận                   |
+| `sentiment_distribution` | object | Phân bố bài viết theo sentiment     |
+| `avg_sentiment_score`    | float  | Điểm sentiment trung bình           |
+| `risk_distribution`      | object | Phân bố bài viết theo mức độ rủi ro |
+| `intent_distribution`    | object | Phân bố bài viết theo intent        |
+| `platform_distribution`  | object | Phân bố bài viết theo nền tảng      |
+| `engagement_totals`      | object | Tổng các chỉ số engagement          |
+| `viral_count`            | int    | Số bài viral                        |
+| `kol_count`              | int    | Số bài từ KOL                       |
+| `avg_impact_score`       | float  | Điểm impact trung bình              |
 
 ---
 
-## 5. Data Flow và Dependencies
+## 3. Trends API
 
-### 5.1. Processing Pipeline Order
+### 3.1 GET /trends
+
+Lấy dữ liệu xu hướng theo thời gian cho biểu đồ dashboard.
+
+#### Request Parameters
+
+| Parameter     | Type     | Required | Default | Description                  |
+| ------------- | -------- | -------- | ------- | ---------------------------- |
+| `project_id`  | UUID     | ✅       | -       | ID của project               |
+| `brand_name`  | string   | ❌       | null    | Lọc theo tên thương hiệu     |
+| `keyword`     | string   | ❌       | null    | Lọc theo từ khóa             |
+| `granularity` | string   | ❌       | "day"   | Độ chi tiết (day/week/month) |
+| `from_date`   | datetime | ✅       | -       | Ngày bắt đầu                 |
+| `to_date`     | datetime | ✅       | -       | Ngày kết thúc                |
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "granularity": "day | week | month",
+    "items": [
+      {
+        "date": "YYYY-MM-DD",
+        "post_count": "int",
+        "comment_count": "int",
+        "avg_sentiment_score": "float",
+        "avg_impact_score": "float",
+        "sentiment_breakdown": {
+          "POSITIVE": "int",
+          "NEUTRAL": "int",
+          "NEGATIVE": "int"
+        },
+        "total_views": "int",
+        "total_likes": "int",
+        "viral_count": "int",
+        "crisis_count": "int"
+      }
+    ]
+  }
+}
+```
+
+#### Response Fields Description
+
+| Field                         | Type   | Description                        |
+| ----------------------------- | ------ | ---------------------------------- |
+| `granularity`                 | string | Độ chi tiết thời gian              |
+| `items`                       | array  | Danh sách data points              |
+| `items[].date`                | string | Ngày (format YYYY-MM-DD)           |
+| `items[].post_count`          | int    | Số bài viết trong khoảng thời gian |
+| `items[].comment_count`       | int    | Số bình luận                       |
+| `items[].avg_sentiment_score` | float  | Điểm sentiment trung bình          |
+| `items[].avg_impact_score`    | float  | Điểm impact trung bình             |
+| `items[].sentiment_breakdown` | object | Phân bố sentiment                  |
+| `items[].total_views`         | int    | Tổng lượt xem                      |
+| `items[].total_likes`         | int    | Tổng lượt thích                    |
+| `items[].viral_count`         | int    | Số bài viral                       |
+| `items[].crisis_count`        | int    | Số bài có intent CRISIS            |
+
+---
+
+## 4. Keywords API
+
+### 4.1 GET /top-keywords
+
+Lấy danh sách từ khóa phổ biến nhất với phân tích sentiment. Có thể kèm theo thông tin xếp hạng của nhiều keywords cụ thể.
+
+#### Request Parameters
+
+| Parameter          | Type     | Required | Default | Description                                                                    |
+| ------------------ | -------- | -------- | ------- | ------------------------------------------------------------------------------ |
+| `project_id`       | UUID     | ✅       | -       | ID của project                                                                 |
+| `brand_name`       | string   | ❌       | null    | Lọc theo tên thương hiệu                                                       |
+| `keyword`          | string   | ❌       | null    | Lọc theo từ khóa crawl                                                         |
+| `from_date`        | datetime | ❌       | null    | Ngày bắt đầu                                                                   |
+| `to_date`          | datetime | ❌       | null    | Ngày kết thúc                                                                  |
+| `limit`            | int      | ❌       | 20      | Số lượng keywords trả về (1-50)                                                |
+| `include_rank_for` | string   | ❌       | null    | Danh sách keywords cần tìm xếp hạng, phân cách bằng dấu phẩy (comma-separated) |
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "keywords": [
+      {
+        "keyword": "string",
+        "count": "int",
+        "avg_sentiment_score": "float",
+        "aspect": "string",
+        "sentiment_breakdown": {
+          "POSITIVE": "int",
+          "NEUTRAL": "int",
+          "NEGATIVE": "int"
+        }
+      }
+    ],
+    "input_keyword_ranks": [
+      {
+        "keyword": "string",
+        "rank": "int | null",
+        "count": "int",
+        "avg_sentiment_score": "float",
+        "in_top": "boolean"
+      }
+    ]
+  }
+}
+```
+
+#### Response Fields Description
+
+| Field                                       | Type       | Description                                             |
+| ------------------------------------------- | ---------- | ------------------------------------------------------- |
+| `keywords`                                  | array      | Danh sách top keywords                                  |
+| `keywords[].keyword`                        | string     | Từ khóa                                                 |
+| `keywords[].count`                          | int        | Số lần xuất hiện                                        |
+| `keywords[].avg_sentiment_score`            | float      | Điểm sentiment trung bình                               |
+| `keywords[].aspect`                         | string     | Khía cạnh liên quan                                     |
+| `keywords[].sentiment_breakdown`            | object     | Phân bố sentiment của keyword                           |
+| `input_keyword_ranks`                       | array/null | Thông tin xếp hạng (chỉ có khi dùng `include_rank_for`) |
+| `input_keyword_ranks[].keyword`             | string     | Keyword được tìm kiếm                                   |
+| `input_keyword_ranks[].rank`                | int/null   | Vị trí xếp hạng (1-based), null nếu không tìm thấy      |
+| `input_keyword_ranks[].count`               | int        | Số lần xuất hiện của keyword                            |
+| `input_keyword_ranks[].avg_sentiment_score` | float      | Điểm sentiment trung bình                               |
+| `input_keyword_ranks[].in_top`              | boolean    | Keyword có nằm trong top list không                     |
+
+#### Example Usage
+
+Lấy top 20 keywords và xếp hạng của "baocaosu" và "durex":
 
 ```
-1. Text Preprocessing → clean_text, stats
-2. Intent Classification → intent, should_skip
-3. Skip Check → Nếu should_skip = true, bỏ qua các bước AI
-4. Keyword Extraction → keywords với aspects
-5. Sentiment Analysis → overall + aspect sentiments
-6. Impact Calculation → impact_score, risk_level, flags
-7. Database Persistence → Lưu vào post_analytics
+GET /top-keywords?project_id=xxx&limit=20&include_rank_for=baocaosu,durex
 ```
 
-### 5.2. Skip Logic
+Response:
 
-**Điều kiện skip AI processing:**
-
-```python
-should_skip = (
-    preprocessing.is_too_short OR
-    preprocessing.has_spam_keyword OR
-    intent.should_skip  # SPAM hoặc SEEDING
-)
+```json
+{
+  "success": true,
+  "data": {
+    "keywords": [
+      {
+        "keyword": "durex",
+        "count": 500,
+        "avg_sentiment_score": 0.7,
+        "aspect": "product",
+        "sentiment_breakdown": {
+          "POSITIVE": 400,
+          "NEUTRAL": 80,
+          "NEGATIVE": 20
+        }
+      },
+      {
+        "keyword": "okamoto",
+        "count": 450,
+        "avg_sentiment_score": 0.65,
+        "aspect": "product",
+        "sentiment_breakdown": {
+          "POSITIVE": 350,
+          "NEUTRAL": 70,
+          "NEGATIVE": 30
+        }
+      }
+    ],
+    "input_keyword_ranks": [
+      {
+        "keyword": "baocaosu",
+        "rank": 5,
+        "count": 320,
+        "avg_sentiment_score": 0.65,
+        "in_top": true
+      },
+      {
+        "keyword": "durex",
+        "rank": 1,
+        "count": 500,
+        "avg_sentiment_score": 0.7,
+        "in_top": true
+      }
+    ]
+  }
+}
 ```
 
-### 5.3. Field Dependencies
+---
 
-- `overall_sentiment` ← PhoBERT model output
-- `aspects_breakdown` ← `overall_sentiment` + `keywords` + context windowing
-- `impact_score` ← engagement metrics + reach + platform + sentiment
-- `risk_level` ← `impact_score` + `overall_sentiment` + `is_kol`
-- `is_viral` ← `impact_score >= 70.0`
-- `is_kol` ← `follower_count >= 50000`
+## 5. Alerts API
+
+### 5.1 GET /alerts
+
+Lấy các bài viết cần chú ý (critical, viral, crisis).
+
+#### Request Parameters
+
+| Parameter    | Type   | Required | Default | Description                 |
+| ------------ | ------ | -------- | ------- | --------------------------- |
+| `project_id` | UUID   | ✅       | -       | ID của project              |
+| `brand_name` | string | ❌       | null    | Lọc theo tên thương hiệu    |
+| `keyword`    | string | ❌       | null    | Lọc theo từ khóa            |
+| `limit`      | int    | ❌       | 10      | Số item mỗi category (1-50) |
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "critical_posts": [AlertPost],
+    "viral_posts": [AlertPost],
+    "crisis_intents": [AlertPost],
+    "summary": {
+      "critical_count": "int",
+      "viral_count": "int",
+      "crisis_count": "int"
+    }
+  }
+}
+```
+
+#### AlertPost Schema
+
+```json
+{
+  "id": "string",
+  "content_text": "string | null (max 200 chars)",
+  "risk_level": "string | null",
+  "impact_score": "float",
+  "overall_sentiment": "string",
+  "primary_intent": "string | null",
+  "is_viral": "boolean | null",
+  "view_count": "int",
+  "published_at": "datetime",
+  "permalink": "string | null"
+}
+```
+
+#### Response Fields Description
+
+| Field                    | Type  | Description                       |
+| ------------------------ | ----- | --------------------------------- |
+| `critical_posts`         | array | Bài viết có risk_level = CRITICAL |
+| `viral_posts`            | array | Bài viết viral                    |
+| `crisis_intents`         | array | Bài viết có intent = CRISIS       |
+| `summary.critical_count` | int   | Tổng số bài critical              |
+| `summary.viral_count`    | int   | Tổng số bài viral                 |
+| `summary.crisis_count`   | int   | Tổng số bài crisis                |
 
 ---
 
-## 6. Validation và Constraints
+## 6. Errors API
 
-### 6.1. Business Rules
+### 6.1 GET /errors
 
-- `project_id` có thể NULL (cho dry-run tasks)
-- `overall_sentiment_score` phải trong range [-1.0, 1.0]
-- `impact_score` phải trong range [0.0, 100.0]
-- `intent_confidence` phải trong range [0.5, 1.0]
-- Tất cả engagement counts phải ≥ 0
+Lấy danh sách lỗi crawl với phân trang.
 
-### 6.2. Data Quality Checks
+#### Request Parameters
 
-- `keywords.extracted` không được rỗng (trừ khi skip)
-- `aspects_breakdown` phải chứa ít nhất 1 aspect
-- `sentiment_probabilities` phải sum = 1.0
-- `processing_time_ms` phải > 0
-- `published_at` không được trong tương lai
+| Parameter    | Type     | Required | Default | Description               |
+| ------------ | -------- | -------- | ------- | ------------------------- |
+| `project_id` | UUID     | ✅       | -       | ID của project            |
+| `job_id`     | string   | ❌       | null    | Lọc theo job ID           |
+| `error_code` | string   | ❌       | null    | Lọc theo mã lỗi           |
+| `from_date`  | datetime | ❌       | null    | Ngày bắt đầu              |
+| `to_date`    | datetime | ❌       | null    | Ngày kết thúc             |
+| `page`       | int      | ❌       | 1       | Số trang                  |
+| `page_size`  | int      | ❌       | 20      | Số item mỗi trang (1-100) |
 
----
+#### Response
 
-## 7. Performance Considerations
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "int",
+      "content_id": "string",
+      "platform": "string",
+      "error_code": "string",
+      "error_category": "string",
+      "error_message": "string | null",
+      "permalink": "string | null",
+      "job_id": "string",
+      "created_at": "datetime"
+    }
+  ],
+  "meta": {
+    "page": "int",
+    "page_size": "int",
+    "total_items": "int",
+    "total_pages": "int",
+    "has_next": "boolean",
+    "has_prev": "boolean"
+  }
+}
+```
 
-### 7.1. Database Indexes
+#### Response Fields Description
 
-**Indexes trên `post_analytics`:**
-
-- `idx_post_analytics_job_id` (job_id)
-- `idx_post_analytics_fetch_status` (fetch_status)
-- `idx_post_analytics_task_type` (task_type)
-- `idx_post_analytics_error_code` (error_code)
-
-**Indexes trên `crawl_errors`:**
-
-- `idx_crawl_errors_project_id` (project_id)
-- `idx_crawl_errors_error_code` (error_code)
-- `idx_crawl_errors_created_at` (created_at)
-- `idx_crawl_errors_job_id` (job_id)
-
-### 7.2. Processing Times
-
-| Module                | Average Time   | Complexity          |
-| --------------------- | -------------- | ------------------- |
-| Text Preprocessing    | ~1-2ms         | O(n)                |
-| Intent Classification | ~0.015ms       | O(p) patterns       |
-| Keyword Extraction    | ~100-300ms     | O(k) + AI           |
-| Sentiment Analysis    | ~80-120ms      | O(1) per prediction |
-| Impact Calculation    | ~0.1ms         | O(1)                |
-| **Total Pipeline**    | **~200-500ms** | -                   |
-
----
-
-## 8. Error Handling và Logging
-
-### 8.1. Graceful Degradation
-
-- Nếu PhoBERT fail → skip sentiment analysis, lưu error
-- Nếu keyword extraction fail → fallback to empty keywords
-- Nếu aspect analysis fail → fallback to overall sentiment
-- Nếu impact calculation fail → default impact_score = 0.0
-
-### 8.2. Error Storage
-
-**post_analytics errors:**
-
-- `fetch_status` = "error"
-- `fetch_error` = short message
-- `error_code` = standardized code
-- `error_details` = full JSON details
-
-**crawl_errors table:**
-
-- Separate storage cho crawler-specific errors
-- Detailed categorization và analysis
-- Không ảnh hưởng đến analytics results
+| Field            | Type     | Description            |
+| ---------------- | -------- | ---------------------- |
+| `id`             | int      | ID của error record    |
+| `content_id`     | string   | ID của content bị lỗi  |
+| `platform`       | string   | Nền tảng               |
+| `error_code`     | string   | Mã lỗi                 |
+| `error_category` | string   | Phân loại lỗi          |
+| `error_message`  | string   | Thông báo lỗi chi tiết |
+| `permalink`      | string   | Link đến content gốc   |
+| `job_id`         | string   | ID của job crawl       |
+| `created_at`     | datetime | Thời gian ghi nhận lỗi |
 
 ---
 
-_Document này được tạo tự động từ source code analysis và được cập nhật định kỳ theo phiên bản hệ thống._
+## 7. Health API
+
+### 7.1 GET /health
+
+Health check cơ bản.
+
+#### Response
+
+```json
+{
+  "status": "healthy"
+}
+```
+
+---
+
+### 7.2 GET /health/detailed
+
+Health check chi tiết với trạng thái dependencies.
+
+#### Response
+
+```json
+{
+  "status": "healthy | unhealthy",
+  "version": "string",
+  "service": "string",
+  "dependencies": {
+    "database": "healthy | unhealthy"
+  },
+  "uptime": "string"
+}
+```
+
+---
+
+## 8. Common Schemas
+
+### 8.1 Error Response
+
+Tất cả API trả về format lỗi thống nhất khi có exception:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "string",
+    "message": "string",
+    "details": [
+      {
+        "field": "string",
+        "message": "string",
+        "code": "string"
+      }
+    ]
+  },
+  "meta": {
+    "timestamp": "datetime",
+    "request_id": "string",
+    "version": "string"
+  }
+}
+```
+
+### 8.2 Error Codes
+
+| Code      | Description           |
+| --------- | --------------------- |
+| `SYS_001` | Internal server error |
+| `RES_001` | Resource not found    |
+| `VAL_001` | Validation error      |
+
+### 8.3 Enum Values
+
+#### Sentiment
+
+- `POSITIVE`
+- `NEUTRAL`
+- `NEGATIVE`
+
+#### Risk Level
+
+- `LOW`
+- `MEDIUM`
+- `HIGH`
+- `CRITICAL`
+
+#### Granularity
+
+- `day`
+- `week`
+- `month`
+
+#### Sort Order
+
+- `asc`
+- `desc`
+
+---
+
+## Response Headers
+
+Tất cả response đều có header:
+
+| Header         | Description                                    |
+| -------------- | ---------------------------------------------- |
+| `X-Request-ID` | UUID duy nhất cho mỗi request, dùng để tracing |
+
+---
+
+## Notes
+
+1. Tất cả datetime đều ở format ISO 8601 (UTC)
+2. `project_id` là required cho hầu hết các endpoint
+3. Pagination mặc định: page=1, page_size=20
+4. Content trong list view được truncate để tối ưu performance

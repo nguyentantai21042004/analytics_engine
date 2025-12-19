@@ -137,6 +137,20 @@ class IAnalyticsApiRepository(ABC):
         """Get top keywords with sentiment analysis."""
         pass
 
+    @abstractmethod
+    async def get_keyword_rank(
+        self,
+        project_id: UUID,
+        search_keyword: str,
+        brand_name: Optional[str] = None,
+        keyword: Optional[str] = None,
+        from_date: Optional[datetime] = None,
+        to_date: Optional[datetime] = None,
+        top_limit: int = 20,
+    ) -> Optional[dict]:
+        """Get ranking info for a specific keyword in the full list."""
+        pass
+
     # Alerts operations
     @abstractmethod
     async def get_alert_posts(

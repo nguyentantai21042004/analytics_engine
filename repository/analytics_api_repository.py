@@ -380,22 +380,28 @@ class AnalyticsApiRepository(IAnalyticsApiRepository):
     ) -> List[dict]:
         """Get top keywords with sentiment analysis."""
         try:
-            # Build base conditions
-            conditions = [PostAnalytics.project_id == project_id]
+            # Build dynamic WHERE clause to avoid asyncpg NULL parameter issues
+            where_clauses = ["project_id = :project_id", "keywords IS NOT NULL"]
+            params = {"project_id": str(project_id), "limit": limit}
 
             if brand_name:
-                conditions.append(PostAnalytics.brand_name == brand_name)
+                where_clauses.append("brand_name = :brand_name")
+                params["brand_name"] = brand_name
             if keyword:
-                conditions.append(PostAnalytics.keyword == keyword)
+                where_clauses.append("keyword = :keyword")
+                params["keyword"] = keyword
             if from_date:
-                conditions.append(PostAnalytics.published_at >= from_date)
+                where_clauses.append("published_at >= :from_date")
+                params["from_date"] = from_date
             if to_date:
-                conditions.append(PostAnalytics.published_at <= to_date)
+                where_clauses.append("published_at <= :to_date")
+                params["to_date"] = to_date
+
+            where_sql = " AND ".join(where_clauses)
 
             # Use PostgreSQL JSONB functions to extract and aggregate keywords
-            # This is a complex query that extracts keywords from JSONB and aggregates them
             keywords_query = text(
-                """
+                f"""
                 SELECT 
                     keyword_data->>'keyword' as keyword,
                     keyword_data->>'aspect' as aspect,
@@ -406,29 +412,14 @@ class AnalyticsApiRepository(IAnalyticsApiRepository):
                     COUNT(*) FILTER (WHERE (keyword_data->>'sentiment') = 'NEGATIVE') as negative_count
                 FROM post_analytics,
                      LATERAL jsonb_array_elements(keywords) as keyword_data
-                WHERE project_id = :project_id
-                    AND (:brand_name IS NULL OR brand_name = :brand_name)
-                    AND (:keyword IS NULL OR keyword = :keyword) 
-                    AND (:from_date IS NULL OR published_at >= :from_date)
-                    AND (:to_date IS NULL OR published_at <= :to_date)
-                    AND keywords IS NOT NULL
+                WHERE {where_sql}
                 GROUP BY keyword_data->>'keyword', keyword_data->>'aspect'
                 ORDER BY count DESC
                 LIMIT :limit
             """
             )
 
-            result = await self.db.execute(
-                keywords_query,
-                {
-                    "project_id": str(project_id),
-                    "brand_name": brand_name,
-                    "keyword": keyword,
-                    "from_date": from_date,
-                    "to_date": to_date,
-                    "limit": limit,
-                },
-            )
+            result = await self.db.execute(keywords_query, params)
 
             keywords_data = []
             for row in result.fetchall():
@@ -451,6 +442,87 @@ class AnalyticsApiRepository(IAnalyticsApiRepository):
 
         except Exception as e:
             logger.error(f"Error getting top keywords: {e}")
+            raise
+
+    async def get_keyword_rank(
+        self,
+        project_id: UUID,
+        search_keyword: str,
+        brand_name: Optional[str] = None,
+        keyword: Optional[str] = None,
+        from_date: Optional[datetime] = None,
+        to_date: Optional[datetime] = None,
+        top_limit: int = 20,
+    ) -> Optional[dict]:
+        """Get ranking info for a specific keyword in the full list."""
+        try:
+            # Build dynamic WHERE clause to avoid asyncpg NULL parameter issues
+            where_clauses = ["project_id = :project_id", "keywords IS NOT NULL"]
+            params = {
+                "project_id": str(project_id),
+                "search_keyword": search_keyword,
+                "top_limit": top_limit,
+            }
+
+            if brand_name:
+                where_clauses.append("brand_name = :brand_name")
+                params["brand_name"] = brand_name
+            if keyword:
+                where_clauses.append("keyword = :keyword")
+                params["keyword"] = keyword
+            if from_date:
+                where_clauses.append("published_at >= :from_date")
+                params["from_date"] = from_date
+            if to_date:
+                where_clauses.append("published_at <= :to_date")
+                params["to_date"] = to_date
+
+            where_sql = " AND ".join(where_clauses)
+
+            # Query to get rank of a specific keyword among all keywords
+            rank_query = text(
+                f"""
+                WITH keyword_stats AS (
+                    SELECT 
+                        keyword_data->>'keyword' as keyword,
+                        COUNT(*) as count,
+                        AVG((keyword_data->>'score')::float) as avg_sentiment_score,
+                        ROW_NUMBER() OVER (ORDER BY COUNT(*) DESC) as rank
+                    FROM post_analytics,
+                         LATERAL jsonb_array_elements(keywords) as keyword_data
+                    WHERE {where_sql}
+                    GROUP BY keyword_data->>'keyword'
+                )
+                SELECT 
+                    keyword,
+                    count,
+                    avg_sentiment_score,
+                    rank,
+                    (rank <= :top_limit) as in_top
+                FROM keyword_stats
+                WHERE LOWER(keyword) = LOWER(:search_keyword)
+                LIMIT 1
+            """
+            )
+
+            result = await self.db.execute(rank_query, params)
+
+            row = result.fetchone()
+            if row:
+                logger.debug(f"Found keyword '{search_keyword}' at rank {row.rank}")
+                return {
+                    "keyword": row.keyword,
+                    "count": row.count,
+                    "avg_sentiment_score": float(row.avg_sentiment_score or 0),
+                    "rank": row.rank,
+                    "in_top": row.in_top,
+                }
+
+            logger.debug(f"Keyword '{search_keyword}' not found in database")
+            return None
+
+        except Exception as e:
+            logger.error(f"Error getting keyword rank: {e}")
             raise
 
     async def get_alert_posts(
